@@ -81,17 +81,9 @@ export class TPLinkController {
       this.log.debug('Device model:', this.device.model);
       this.log.debug('Device supportsEmeter:', this.device.supportsEmeter);
 
-      // Try to get the inUse state directly from the device
-      // This should match the homebridge-tplink-smarthome plugin behavior
-      if (typeof this.device.getInUse === 'function') {
-        try {
-          const inUse = await this.device.getInUse();
-          this.log.info('TP-Link inUse state (direct method):', inUse);
-          return inUse;
-        } catch (error) {
-          this.log.warn('Direct getInUse method failed:', error);
-        }
-      }
+      // Skip direct getInUse method - it's not working correctly
+      // Force use of power consumption method for HS110
+      this.log.debug('Skipping direct getInUse method, using power consumption method');
 
       // Fallback: Use power consumption method
       const powerState = await this.device.getPowerState();
@@ -112,6 +104,15 @@ export class TPLinkController {
           // Use 3W threshold to match your homebridge-tplink-smarthome plugin
           const inUse = powerConsumption > 3;
           this.log.info('TP-Link inUse state (emeter method):', inUse, '(power:', powerConsumption, 'W, threshold: 3W)');
+          
+          // Log detailed emeter data for debugging
+          this.log.debug('Full emeter data:', {
+            power: emeter.power,
+            voltage: emeter.voltage,
+            current: emeter.current,
+            total: emeter.total
+          });
+          
           return inUse;
         } catch (emeterError) {
           this.log.error('Failed to get power consumption:', emeterError);
