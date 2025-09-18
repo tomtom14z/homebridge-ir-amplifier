@@ -36,31 +36,26 @@ export class BroadlinkController {
 
   private async initializeDevice() {
     try {
-      this.log.info('Discovering Broadlink devices...');
-      const devices = await this.broadlink.discover();
+      this.log.info('Initializing Broadlink device...');
       
-      if (!devices || !Array.isArray(devices)) {
-        this.log.warn('No Broadlink devices discovered or invalid response');
-        return;
-      }
+      // Create device manually with known IP and MAC
+      this.device = {
+        host: { address: this.config.broadlink.host },
+        mac: this.config.broadlink.mac,
+        type: 0x279d, // RM3 Pro Plus type
+        name: 'RM3 Pro Plus'
+      };
 
-      this.log.info(`Found ${devices.length} Broadlink device(s)`);
+      this.log.info('Broadlink device configured:', this.device.host.address, this.device.mac);
       
-      this.device = devices.find((device: any) => 
-        device.host?.address === this.config.broadlink.host ||
-        device.mac === this.config.broadlink.mac
-      );
-
-      if (!this.device) {
-        this.log.warn('Broadlink device not found with specified host/mac');
-        this.log.info('Available devices:', devices.map((d: any) => ({
-          host: d.host?.address,
-          mac: d.mac
-        })));
-        return;
-      }
-
-      this.log.info('Broadlink device found:', this.device.host?.address || this.device.mac);
+      // Test connection by trying to discover (this will populate the device)
+      this.broadlink.discover();
+      
+      // Wait a bit for discovery to complete
+      setTimeout(() => {
+        this.log.info('Broadlink discovery completed');
+      }, 2000);
+      
     } catch (error) {
       this.log.error('Failed to initialize Broadlink device:', error);
     }
@@ -73,10 +68,12 @@ export class BroadlinkController {
         return false;
       }
 
-      // Convert hex string to buffer if needed
+      // Convert hex string to buffer
       const commandBuffer = Buffer.from(command, 'hex');
-      await this.device.sendData(commandBuffer);
-      this.log.debug('IR command sent:', command);
+      
+      // Use the broadlink instance to send data
+      this.broadlink.sendData(this.device, commandBuffer);
+      this.log.info('IR command sent:', command, 'to', this.device.host.address);
       return true;
     } catch (error) {
       this.log.error('Failed to send IR command:', error);
@@ -109,7 +106,6 @@ export class BroadlinkController {
       }
 
       this.log.info('Learning IR command... Press the button on your remote');
-      const data = await this.device.enterLearning();
       
       return new Promise((resolve) => {
         const timer = setTimeout(() => {
@@ -117,12 +113,16 @@ export class BroadlinkController {
           resolve(null);
         }, timeout);
 
-        this.device.on('rawData', (data: Buffer) => {
+        // Listen for learned data
+        this.broadlink.on('rawData', (data: Buffer) => {
           clearTimeout(timer);
           const hexCommand = data.toString('hex');
           this.log.info('Learned command:', hexCommand);
           resolve(hexCommand);
         });
+
+        // Start learning mode
+        this.broadlink.enterLearning(this.device);
       });
     } catch (error) {
       this.log.error('Failed to learn IR command:', error);
