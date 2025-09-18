@@ -345,6 +345,11 @@ export class IRAmplifierAccessory {
         await this.cecController.setPowerState(this.isOn);
       } else {
         this.log.debug('TP-Link: No state change needed');
+        
+        // Même si pas de changement d'état, s'assurer que CEC est synchronisé
+        // (au cas où CEC aurait un état différent)
+        this.log.debug('TP-Link: Ensuring CEC is synchronized with current state:', this.isOn);
+        await this.cecController.setPowerState(this.isOn);
       }
     });
 
