@@ -86,9 +86,17 @@ export class TPLinkController {
           const powerConsumption = emeter.power;
           this.log.info('TP-Link power consumption:', powerConsumption, 'W');
           
-          // Use same threshold as homebridge-tplink-smarthome plugin (3W default)
-          const inUse = powerConsumption > 3;
-          this.log.info('TP-Link inUse state:', inUse, '(based on power consumption:', powerConsumption, 'W, threshold: 3W)');
+          // Test different thresholds to find the right one for your amplifier
+          const threshold3W = powerConsumption > 3;
+          const threshold5W = powerConsumption > 5;
+          const threshold10W = powerConsumption > 10;
+          
+          this.log.info('TP-Link power consumption:', powerConsumption, 'W');
+          this.log.info('TP-Link inUse thresholds - 3W:', threshold3W, '5W:', threshold5W, '10W:', threshold10W);
+          
+          // Use 5W threshold for now (more conservative)
+          const inUse = threshold5W;
+          this.log.info('TP-Link inUse state:', inUse, '(using 5W threshold)');
           return inUse;
         } catch (emeterError) {
           this.log.error('Failed to get power consumption:', emeterError);
@@ -130,9 +138,12 @@ export class TPLinkController {
 
   // Method to monitor power state changes
   startPowerMonitoring(callback: (inUse: boolean) => void, interval: number = 5000) {
+    this.log.info('Starting TP-Link power monitoring with interval:', interval, 'ms');
     setInterval(async () => {
       try {
+        this.log.debug('TP-Link monitoring: Getting inUse state...');
         const inUse = await this.getInUseState();
+        this.log.debug('TP-Link monitoring: inUse state:', inUse);
         callback(inUse);
       } catch (error) {
         this.log.error('Error in power monitoring:', error);
