@@ -62,11 +62,35 @@ export class TPLinkController {
         return false;
       }
 
-      // Use "Outlet In Use" approach: based on power state (on/off)
-      // This is simpler and more reliable than power consumption monitoring
+      // First check if device is powered on
       const powerState = await this.device.getPowerState();
-      this.log.debug('TP-Link outlet in use state:', powerState, '(based on power state)');
-      return powerState; // true = on/in use, false = off/not in use
+      if (!powerState) {
+        this.log.debug('TP-Link device is OFF, inUse = false');
+        return false;
+      }
+
+      // If device is on, check power consumption to determine if amplifier is actually in use
+      if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
+        try {
+          const emeter = await this.device.getEmeterRealtime();
+          const powerConsumption = emeter.power;
+          this.log.debug('TP-Link power consumption:', powerConsumption, 'W');
+          
+          // Consider amplifier in use if power consumption > threshold
+          const threshold = this.config.tplink?.powerThreshold || 5;
+          const inUse = powerConsumption > threshold;
+          this.log.debug('TP-Link inUse state:', inUse, '(based on power consumption:', powerConsumption, 'W)');
+          return inUse;
+        } catch (emeterError) {
+          this.log.warn('Failed to get power consumption, falling back to power state');
+          // Fallback to power state if emeter fails
+          return powerState;
+        }
+      } else {
+        this.log.debug('Device does not support emeter, using power state');
+        // Fallback to power state if device doesn't support emeter
+        return powerState;
+      }
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
       return false;
