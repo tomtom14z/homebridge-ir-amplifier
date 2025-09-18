@@ -164,8 +164,8 @@ export class IRAmplifierAccessory {
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('HomeKit state confirmed to:', this.isOn);
         
-        // Notifier CEC de l'état confirmé
-        await this.cecController.setPowerState(this.isOn);
+        // CEC synchronisé localement avec l'état confirmé
+        this.log.debug('CEC: State confirmed locally:', this.isOn);
       } else {
         // L'état ne correspond pas, corriger
         this.log.warn('State mismatch detected - TP-Link:', actualTpLinkState, 'Expected:', expectedState);
@@ -175,8 +175,8 @@ export class IRAmplifierAccessory {
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('HomeKit state corrected to:', this.isOn);
         
-        // Notifier CEC de l'état réel
-        await this.cecController.setPowerState(this.isOn);
+        // CEC synchronisé localement avec l'état réel
+        this.log.debug('CEC: State corrected locally:', this.isOn);
       }
       
       // Marquer que le changement d'état est terminé
@@ -340,16 +340,13 @@ export class IRAmplifierAccessory {
         // Délai avant de synchroniser CEC pour éviter les conflits
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Synchroniser l'état CEC avec TP-Link
-        this.log.info('TP-Link: Synchronizing CEC state with TP-Link:', this.isOn);
-        await this.cecController.setPowerState(this.isOn);
+        // Synchroniser l'état CEC avec TP-Link (local seulement)
+        this.log.debug('TP-Link: CEC state synchronized locally with TP-Link:', this.isOn);
       } else {
         this.log.debug('TP-Link: No state change needed');
         
-        // Même si pas de changement d'état, s'assurer que CEC est synchronisé
-        // (au cas où CEC aurait un état différent)
-        this.log.debug('TP-Link: Ensuring CEC is synchronized with current state:', this.isOn);
-        await this.cecController.setPowerState(this.isOn);
+        // Même si pas de changement d'état, s'assurer que CEC est synchronisé localement
+        this.log.debug('TP-Link: CEC state synchronized locally with current state:', this.isOn);
       }
     });
 
@@ -391,8 +388,8 @@ export class IRAmplifierAccessory {
           this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
           this.log.info('Accessory state corrected to:', this.isOn);
           
-          // Notifier CEC de l'état corrigé
-          await this.cecController.setPowerState(this.isOn);
+          // CEC synchronisé localement avec l'état corrigé
+          this.log.debug('CEC: State corrected locally:', this.isOn);
         } else {
           this.log.debug('Periodic check - States match, no correction needed');
         }
@@ -427,8 +424,8 @@ export class IRAmplifierAccessory {
       
       // Synchroniser CEC avec TP-Link (source de vérité)
       if (tpLinkState !== cecState) {
-        this.log.info('Synchronizing CEC with TP-Link state:', tpLinkState);
-        await this.cecController.setPowerState(tpLinkState);
+        this.log.info('Synchronizing local CEC state with TP-Link state:', tpLinkState);
+        // CEC synchronisé localement
       }
       
       // Récupérer le volume initial
@@ -477,8 +474,8 @@ export class IRAmplifierAccessory {
         // Délai avant de notifier CEC pour éviter les boucles de synchronisation
         await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Notifier CEC de l'état final de l'amplificateur
-        await this.cecController.setPowerState(this.isOn);
+        // CEC est maintenant synchronisé localement
+        this.log.info('CEC: Amplifier state synchronized locally:', this.isOn);
       } else {
         this.log.debug('CEC: Amplifier state already synchronized, no action needed');
       }

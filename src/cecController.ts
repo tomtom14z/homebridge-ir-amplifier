@@ -346,6 +346,11 @@ export class CECController {
       // Message reçu (incoming)
       const decodedMessage = this.decodeCECMessage(message);
       this.log.info(`CEC BUS: RECEIVED >> ${message} ${decodedMessage}`);
+      
+      // Log spécial pour les commandes de l'Apple TV
+      if (message.includes('4F:') || message.includes('key pressed:')) {
+        this.log.info(`CEC BUS: APPLE TV COMMAND DETECTED >> ${message}`);
+      }
     } else if (message.includes('<<')) {
       // Message envoyé (outgoing)
       const decodedMessage = this.decodeCECMessage(message);
@@ -494,10 +499,11 @@ export class CECController {
   }
 
   async setPowerState(isOn: boolean): Promise<boolean> {
-    const command = isOn ? 'tx 4F:82:10:00' : 'tx 4F:36:00'; // Image View On / Standby
-    this.log.info(`CEC: Sending power state command - ${isOn ? 'ON' : 'OFF'}`);
-    this.log.debug(`CEC: Power command: ${command}`);
-    return this.sendCECCommand(command);
+    // Le plugin n'envoie PAS de commandes CEC - il écoute seulement
+    // Les commandes CEC sont envoyées par l'Apple TV, pas par le plugin
+    this.log.debug(`CEC: Power state updated locally to ${isOn ? 'ON' : 'OFF'} (no CEC command sent)`);
+    this.currentState.isOn = isOn;
+    return true;
   }
 
   async setVolume(volume: number): Promise<boolean> {
