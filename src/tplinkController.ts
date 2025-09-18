@@ -78,18 +78,13 @@ export class TPLinkController {
         return false;
       }
 
-      this.log.info('=== TP-LINK INUSE DEBUG ===');
-      this.log.info('Device model:', this.device.model);
-      this.log.info('Device supportsEmeter:', this.device.supportsEmeter);
-
       // Skip direct getInUse method - it's not working correctly
       // Force use of power consumption method for HS110
-      this.log.info('Skipping direct getInUse method, using power consumption method');
+      this.log.debug('Using power consumption method for HS110');
 
       // Fallback: Use power consumption method
-      this.log.info('Getting power state...');
       const powerState = await this.device.getPowerState();
-      this.log.info('TP-Link power state:', powerState);
+      this.log.debug('TP-Link power state:', powerState);
       
       if (!powerState) {
         this.log.info('TP-Link device is OFF, inUse = false');
@@ -97,12 +92,8 @@ export class TPLinkController {
       }
 
       // For devices that support energy monitoring (HS110, etc), use power consumption
-      this.log.info('Checking if device supports emeter...');
-      this.log.info('Device has getEmeterRealtime method:', typeof this.device.getEmeterRealtime === 'function');
-      this.log.info('Device has getEmeterRealtime method (direct):', typeof this.device.getEmeterRealtime);
-      
       if (this.device.supportsEmeter) {
-        this.log.info('Device supports emeter, trying to get emeter data...');
+        this.log.debug('Device supports emeter, getting emeter data...');
         try {
           // Try different ways to get emeter data
           let emeter;
@@ -116,7 +107,7 @@ export class TPLinkController {
             this.log.info('Using getRealtime method');
             emeter = await this.device.getRealtime();
           } else if (this.device.emeter && typeof this.device.emeter.getRealtime === 'function') {
-            this.log.info('Using device.emeter.getRealtime method');
+            this.log.debug('Using device.emeter.getRealtime method');
             emeter = await this.device.emeter.getRealtime();
           } else {
             this.log.error('No emeter method found on device');
@@ -129,7 +120,6 @@ export class TPLinkController {
           }
           const powerConsumption = emeter.power;
           this.log.info('TP-Link power consumption:', powerConsumption, 'W');
-          this.log.info('TP-Link emeter data:', emeter);
           
           // Use the same logic as homebridge-tplink-smarthome plugin
           // Check if device is powered on first
