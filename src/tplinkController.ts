@@ -98,10 +98,28 @@ export class TPLinkController {
 
       // For devices that support energy monitoring (HS110, etc), use power consumption
       this.log.info('Checking if device supports emeter...');
-      if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
-        this.log.info('Device supports emeter, getting emeter data...');
+      this.log.info('Device has getEmeterRealtime method:', typeof this.device.getEmeterRealtime === 'function');
+      this.log.info('Device has getEmeterRealtime method (direct):', typeof this.device.getEmeterRealtime);
+      
+      if (this.device.supportsEmeter) {
+        this.log.info('Device supports emeter, trying to get emeter data...');
         try {
-          const emeter = await this.device.getEmeterRealtime();
+          // Try different method names that might exist
+          let emeter;
+          if (typeof this.device.getEmeterRealtime === 'function') {
+            this.log.info('Using getEmeterRealtime method');
+            emeter = await this.device.getEmeterRealtime();
+          } else if (typeof this.device.getEmeter === 'function') {
+            this.log.info('Using getEmeter method');
+            emeter = await this.device.getEmeter();
+          } else if (typeof this.device.getRealtime === 'function') {
+            this.log.info('Using getRealtime method');
+            emeter = await this.device.getRealtime();
+          } else {
+            this.log.error('No emeter method found on device');
+            this.log.info('Available methods:', Object.getOwnPropertyNames(this.device));
+            throw new Error('No emeter method available');
+          }
           const powerConsumption = emeter.power;
           this.log.info('TP-Link power consumption:', powerConsumption, 'W');
           this.log.info('TP-Link emeter data:', emeter);
