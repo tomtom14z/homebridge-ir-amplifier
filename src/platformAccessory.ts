@@ -82,16 +82,22 @@ export class IRAmplifierAccessory {
 
   private async setPowerState(value: CharacteristicValue) {
     const boolValue = value as boolean;
-    this.log.info('Setting power state to:', value);
+    this.log.info('=== SET POWER STATE CALLED ===');
+    this.log.info('Requested state:', boolValue);
+    this.log.info('Current accessory state:', this.isOn);
+    this.log.info('Pending state change:', this.pendingStateChange);
     
     // Vérifier l'état actuel de TP-Link
     const currentTpLinkState = await this.tplinkController.getInUseState();
-    this.log.info('Current TP-Link state (inUse):', currentTpLinkState, 'Requested state:', boolValue);
+    this.log.info('Current TP-Link state (inUse):', currentTpLinkState);
     
     if (boolValue !== currentTpLinkState) {
+      this.log.info('State change needed - TP-Link:', currentTpLinkState, '→ Requested:', boolValue);
+      
       // Marquer qu'un changement d'état est en cours
       this.pendingStateChange = true;
       this.lastStateChangeTime = Date.now();
+      this.log.info('Pending state change flag set to TRUE');
       
       // Mettre à jour immédiatement l'état dans HomeKit (état temporaire)
       this.isOn = boolValue;
@@ -99,25 +105,29 @@ export class IRAmplifierAccessory {
       this.log.info('HomeKit state set to temporary state:', this.isOn);
       
       // Envoyer la commande IR via Broadlink
-      this.log.info('Sending IR command to change amplifier state from', currentTpLinkState, 'to', boolValue);
+      this.log.info('Sending IR command to change amplifier state');
       const success = await this.broadlinkController.powerToggle();
       
       if (success) {
+        this.log.info('IR command sent successfully, scheduling verification');
         // Programmer une vérification différée de l'état TP-Link
         this.scheduleStateVerification(boolValue);
       } else {
-        this.log.error('Failed to change power state');
+        this.log.error('Failed to send IR command');
         // Remettre l'état précédent en cas d'échec
         this.isOn = currentTpLinkState;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.pendingStateChange = false;
+        this.log.info('State reverted due to IR command failure');
       }
     } else {
-      this.log.info('Amplifier state already matches requested state');
+      this.log.info('No state change needed - already matches');
       // S'assurer que HomeKit reflète l'état réel
       this.isOn = currentTpLinkState;
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
     }
+    
+    this.log.info('=== SET POWER STATE COMPLETED ===');
   }
 
   private scheduleStateVerification(expectedState: boolean) {
@@ -291,8 +301,19 @@ export class IRAmplifierAccessory {
   private initializeMonitoring() {
     // Monitor TP-Link power state
     this.tplinkController.startPowerMonitoring(async (inUse: boolean) => {
+      this.log.debug('=== TP-LINK MONITORING CALLBACK ===');
+      this.log.debug('TP-Link inUse:', inUse, 'Accessory state:', this.isOn);
+      this.log.debug('Pending state change:', this.pendingStateChange);
+      
       if (inUse !== this.isOn) {
         this.log.info('TP-Link: Power state changed:', this.isOn, '→', inUse);
+        
+        // Ne pas interférer si un changement d'état est en cours
+        if (this.pendingStateChange) {
+          this.log.info('TP-Link: Ignoring state change - pending state change in progress');
+          return;
+        }
+        
         this.isOn = inUse;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('TP-Link: Updated HomeKit power state to:', this.isOn);
@@ -303,6 +324,8 @@ export class IRAmplifierAccessory {
         // Synchroniser l'état CEC avec TP-Link
         this.log.info('TP-Link: Synchronizing CEC state with TP-Link:', this.isOn);
         await this.cecController.setPowerState(this.isOn);
+      } else {
+        this.log.debug('TP-Link: No state change needed');
       }
     });
 
@@ -322,6 +345,10 @@ export class IRAmplifierAccessory {
     // Vérifier l'état toutes les 15 secondes pour s'assurer de la cohérence
     setInterval(async () => {
       try {
+        this.log.debug('=== PERIODIC VERIFICATION ===');
+        this.log.debug('Pending state change:', this.pendingStateChange);
+        this.log.debug('Current accessory state:', this.isOn);
+        
         // Ne pas vérifier si un changement d'état est en cours
         if (this.pendingStateChange) {
           this.log.debug('Skipping periodic verification - state change in progress');
@@ -329,6 +356,8 @@ export class IRAmplifierAccessory {
         }
         
         const tpLinkState = await this.tplinkController.getInUseState();
+        this.log.debug('TP-Link state:', tpLinkState, 'Accessory state:', this.isOn);
+        
         if (tpLinkState !== this.isOn) {
           this.log.info('Periodic check - State mismatch detected - TP-Link:', tpLinkState, 'Accessory:', this.isOn);
           this.log.info('Correcting accessory state to match TP-Link');
@@ -340,6 +369,8 @@ export class IRAmplifierAccessory {
           
           // Notifier CEC de l'état corrigé
           await this.cecController.setPowerState(this.isOn);
+        } else {
+          this.log.debug('Periodic check - States match, no correction needed');
         }
       } catch (error) {
         this.log.error('Error during periodic state verification:', error);
