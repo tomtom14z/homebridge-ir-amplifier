@@ -201,7 +201,7 @@ export class IRAmplifierAccessory {
     
     // Ne pas mettre à jour l'état si un changement est en cours
     if (!this.pendingStateChange) {
-      this.isOn = inUse;
+    this.isOn = inUse;
       this.log.debug('Accessory state updated to:', this.isOn);
     } else {
       this.log.debug('Skipping state update - pending state change in progress');
@@ -320,9 +320,9 @@ export class IRAmplifierAccessory {
   private initializeMonitoring() {
     // Monitor TP-Link power state
     this.tplinkController.startPowerMonitoring(async (inUse: boolean) => {
-      this.log.info('=== TP-LINK MONITORING CALLBACK ===');
-      this.log.info('TP-Link inUse:', inUse, 'Accessory state:', this.isOn);
-      this.log.info('Pending state change:', this.pendingStateChange);
+      this.log.debug('=== TP-LINK MONITORING CALLBACK ===');
+      this.log.debug('TP-Link inUse:', inUse, 'Accessory state:', this.isOn);
+      this.log.debug('Pending state change:', this.pendingStateChange);
       
       if (inUse !== this.isOn) {
         this.log.info('TP-Link: Power state changed:', this.isOn, '→', inUse);
@@ -344,7 +344,7 @@ export class IRAmplifierAccessory {
         this.log.info('TP-Link: Synchronizing CEC state with TP-Link:', this.isOn);
         await this.cecController.setPowerState(this.isOn);
       } else {
-        this.log.info('TP-Link: No state change needed');
+        this.log.debug('TP-Link: No state change needed');
       }
     });
 
