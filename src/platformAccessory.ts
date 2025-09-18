@@ -138,12 +138,12 @@ export class IRAmplifierAccessory {
       clearTimeout(this.stateChangeTimeout);
     }
     
-    this.log.info('Scheduling state verification in 5 seconds for expected state:', expectedState);
+    this.log.info('Scheduling state verification in 10 seconds for expected state:', expectedState);
     
-    // Programmer la vérification après 5 secondes (délai pour que TP-Link se mette à jour)
+    // Programmer la vérification après 10 secondes (délai pour que TP-Link se mette à jour)
     this.stateChangeTimeout = setTimeout(async () => {
       await this.verifyStateChange(expectedState);
-    }, 5000);
+    }, 10000);
   }
 
   private async verifyStateChange(expectedState: boolean) {
@@ -405,13 +405,13 @@ export class IRAmplifierAccessory {
       const tpLinkState = await this.tplinkController.getInUseState();
       this.log.info('Initial TP-Link state (inUse):', tpLinkState);
       
-      // Mettre à jour l'état local de l'accessoire
+      // Mettre à jour l'état local de l'accessoire avec l'état réel de TP-Link
       this.isOn = tpLinkState;
       this.log.info('Accessory state synchronized with TP-Link:', this.isOn);
       
-      // Mettre à jour HomeKit avec l'état réel
+      // Mettre à jour HomeKit avec l'état réel (ignorer le cache)
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('HomeKit state updated to:', this.isOn);
+      this.log.info('HomeKit state updated to real TP-Link state:', this.isOn);
       
       // Récupérer l'état actuel de CEC
       const cecState = this.cecController.getIsOn();
