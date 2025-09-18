@@ -49,6 +49,12 @@ export class TPLinkController {
         return false;
       }
 
+      // Check if device supports emeter
+      if (typeof this.device.getEmeterRealtime !== 'function') {
+        this.log.warn('TP-Link device does not support power monitoring');
+        return false;
+      }
+
       const emeter = await this.device.getEmeterRealtime();
       const inUse = emeter.power > 1; // Consider in use if power > 1W
       this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power);

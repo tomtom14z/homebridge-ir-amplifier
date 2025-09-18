@@ -70,27 +70,33 @@
         },
         "required": ["host"]
       },
-      "ocr": {
-        "title": "OCR Configuration",
-        "type": "object",
-        "properties": {
-          "cameraUrl": {
-            "title": "Camera URL",
-            "type": "string",
-            "format": "uri",
-            "description": "URL of the camera pointing at the amplifier screen"
+          "ocr": {
+            "title": "OCR Configuration (Optional)",
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Enable OCR",
+                "type": "boolean",
+                "default": false,
+                "description": "Enable OCR volume detection (requires camera)"
+              },
+              "cameraUrl": {
+                "title": "Camera URL",
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the camera pointing at the amplifier screen"
+              },
+              "checkInterval": {
+                "title": "Check Interval (ms)",
+                "type": "number",
+                "default": 30000,
+                "minimum": 5000,
+                "maximum": 300000,
+                "description": "Interval between OCR checks in milliseconds"
+              }
+            },
+            "required": []
           },
-          "checkInterval": {
-            "title": "Check Interval (ms)",
-            "type": "number",
-            "default": 30000,
-            "minimum": 5000,
-            "maximum": 300000,
-            "description": "Interval between OCR checks in milliseconds"
-          }
-        },
-        "required": ["cameraUrl"]
-      },
       "cec": {
         "title": "CEC Configuration",
         "type": "object",
@@ -133,6 +139,6 @@
         "required": ["deviceName", "physicalAddress", "logicalAddress", "vendorId", "osdName"]
       }
     },
-    "required": ["name", "broadlink", "tplink", "ocr", "cec"]
+        "required": ["name", "broadlink", "tplink", "cec"]
   }
 }

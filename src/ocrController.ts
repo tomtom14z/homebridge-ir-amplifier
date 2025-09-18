@@ -18,20 +18,37 @@ export class OCRController {
     private log: Logger,
     private config: any,
   ) {
-    this.initializeWorker();
+    if (this.config.ocr?.enabled) {
+      this.initializeWorker();
+    } else {
+      this.log.info('OCR disabled in configuration');
+    }
   }
 
   private async initializeWorker() {
     try {
-      this.worker = await createWorker();
+      this.worker = await createWorker({
+        logger: (m: any) => {
+          if (m.status === 'recognizing text') {
+            this.log.debug('OCR progress:', Math.round(m.progress * 100) + '%');
+          }
+        }
+      });
+      
+      await this.worker.loadLanguage('eng');
+      await this.worker.initialize('eng');
+      
       await this.worker.setParameters({
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz: -',
         tessedit_pageseg_mode: '8', // Single word
       });
+      
       this.isInitialized = true;
       this.log.info('OCR worker initialized');
     } catch (error) {
       this.log.error('Failed to initialize OCR worker:', error);
+      // Continue without OCR if it fails
+      this.isInitialized = false;
     }
   }
 
@@ -114,6 +131,10 @@ export class OCRController {
   }
 
   async getVolumeAndSource(): Promise<OCRResult> {
+    if (!this.config.ocr?.enabled) {
+      return { volume: null, source: null, confidence: 0 };
+    }
+
     const imageBuffer = await this.captureScreen();
     if (!imageBuffer) {
       return { volume: null, source: null, confidence: 0 };
@@ -124,6 +145,11 @@ export class OCRController {
 
   // Method to start periodic OCR checking
   startPeriodicCheck(callback: (result: OCRResult) => void) {
+    if (!this.config.ocr?.enabled) {
+      this.log.info('OCR periodic check disabled');
+      return;
+    }
+
     const interval = this.config.ocr.checkInterval || 30000; // Default 30 seconds
     
     cron.schedule(`*/${Math.floor(interval / 1000)} * * * * *`, async () => {

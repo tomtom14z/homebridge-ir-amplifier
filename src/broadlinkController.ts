@@ -36,18 +36,31 @@ export class BroadlinkController {
 
   private async initializeDevice() {
     try {
+      this.log.info('Discovering Broadlink devices...');
       const devices = await this.broadlink.discover();
+      
+      if (!devices || !Array.isArray(devices)) {
+        this.log.warn('No Broadlink devices discovered or invalid response');
+        return;
+      }
+
+      this.log.info(`Found ${devices.length} Broadlink device(s)`);
+      
       this.device = devices.find((device: any) => 
-        device.host.address === this.config.broadlink.host ||
+        device.host?.address === this.config.broadlink.host ||
         device.mac === this.config.broadlink.mac
       );
 
       if (!this.device) {
-        this.log.error('Broadlink device not found');
+        this.log.warn('Broadlink device not found with specified host/mac');
+        this.log.info('Available devices:', devices.map((d: any) => ({
+          host: d.host?.address,
+          mac: d.mac
+        })));
         return;
       }
 
-      this.log.info('Broadlink device found:', this.device.host.address);
+      this.log.info('Broadlink device found:', this.device.host?.address || this.device.mac);
     } catch (error) {
       this.log.error('Failed to initialize Broadlink device:', error);
     }

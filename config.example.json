@@ -17,6 +17,7 @@
         "host": "192.168.1.101"
       },
       "ocr": {
+        "enabled": false,
         "cameraUrl": "http://192.168.1.102:8080/snapshot",
         "checkInterval": 30000
       },
