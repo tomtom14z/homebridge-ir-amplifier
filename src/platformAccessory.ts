@@ -138,12 +138,12 @@ export class IRAmplifierAccessory {
       clearTimeout(this.stateChangeTimeout);
     }
     
-    this.log.info('Scheduling state verification in 10 seconds for expected state:', expectedState);
+    this.log.info('Scheduling state verification in 15 seconds for expected state:', expectedState);
     
-    // Programmer la vérification après 10 secondes (délai pour que TP-Link se mette à jour)
+    // Programmer la vérification après 15 secondes (délai pour que TP-Link se mette à jour)
     this.stateChangeTimeout = setTimeout(async () => {
       await this.verifyStateChange(expectedState);
-    }, 10000);
+    }, 15000);
   }
 
   private async verifyStateChange(expectedState: boolean) {
