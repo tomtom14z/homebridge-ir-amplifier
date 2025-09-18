@@ -124,7 +124,8 @@ export class CECController {
     
     for (const line of lines) {
       if (line.trim()) {
-        this.log.debug('CEC Raw Message:', line.trim());
+        // Logger TOUS les messages CEC du bus
+        this.logCECBusMessage(line.trim());
         
         if (line.includes('>>')) {
           this.log.debug('CEC Command Detected:', line.trim());
@@ -132,6 +133,101 @@ export class CECController {
         }
       }
     }
+  }
+
+  private logCECBusMessage(message: string) {
+    // Analyser le type de message CEC
+    if (message.includes('>>')) {
+      // Message reçu (incoming)
+      const decodedMessage = this.decodeCECMessage(message);
+      this.log.info(`CEC BUS: RECEIVED >> ${message} ${decodedMessage}`);
+    } else if (message.includes('<<')) {
+      // Message envoyé (outgoing)
+      const decodedMessage = this.decodeCECMessage(message);
+      this.log.info(`CEC BUS: SENT << ${message} ${decodedMessage}`);
+    } else if (message.includes('TRAFFIC')) {
+      // Trafic CEC général
+      this.log.info(`CEC BUS: TRAFFIC ${message}`);
+    } else if (message.includes('key pressed:')) {
+      // Touches pressées
+      this.log.info(`CEC BUS: KEY PRESSED ${message}`);
+    } else if (message.includes('power status')) {
+      // État d'alimentation
+      this.log.info(`CEC BUS: POWER STATUS ${message}`);
+    } else if (message.includes('volume')) {
+      // Commandes de volume
+      this.log.info(`CEC BUS: VOLUME ${message}`);
+    } else if (message.includes('mute')) {
+      // Commandes de mute
+      this.log.info(`CEC BUS: MUTE ${message}`);
+    } else if (message.includes('source')) {
+      // Changements de source
+      this.log.info(`CEC BUS: SOURCE ${message}`);
+    } else if (message.includes('device')) {
+      // Informations sur les appareils
+      this.log.info(`CEC BUS: DEVICE ${message}`);
+    } else {
+      // Autres messages CEC
+      this.log.debug(`CEC BUS: OTHER ${message}`);
+    }
+  }
+
+  private decodeCECMessage(message: string): string {
+    try {
+      // Extraire les adresses et commandes CEC
+      const match = message.match(/(\d+):(\d+):([0-9A-Fa-f:]+)/);
+      if (match) {
+        const [, from, to, command] = match;
+        const fromDevice = this.getCECDeviceName(parseInt(from));
+        const toDevice = this.getCECDeviceName(parseInt(to));
+        const commandName = this.getCECCommandName(command);
+        
+        return `[${fromDevice}(${from}) → ${toDevice}(${to})] ${commandName}`;
+      }
+    } catch (error) {
+      // Ignorer les erreurs de décodage
+    }
+    return '';
+  }
+
+  private getCECDeviceName(address: number): string {
+    const deviceNames: { [key: number]: string } = {
+      0: 'TV',
+      1: 'Recording Device 1',
+      2: 'Recording Device 2', 
+      3: 'Tuner 1',
+      4: 'Playback Device 1',
+      5: 'Audio System', // Notre amplificateur
+      6: 'Tuner 2',
+      7: 'Tuner 3',
+      8: 'Playback Device 2',
+      9: 'Recording Device 3',
+      10: 'Tuner 4',
+      11: 'Playback Device 3',
+      12: 'Reserved',
+      13: 'Reserved',
+      14: 'Reserved',
+      15: 'Unregistered'
+    };
+    return deviceNames[address] || `Device ${address}`;
+  }
+
+  private getCECCommandName(command: string): string {
+    const commandNames: { [key: string]: string } = {
+      '82:10:00': 'Image View On',
+      '82:00:00': 'Image View Off',
+      '44': 'User Control Pressed - Mute',
+      '45': 'User Control Pressed - Unmute',
+      '41': 'User Control Pressed - Volume Up',
+      '42': 'User Control Pressed - Volume Down',
+      '50': 'User Control Pressed - Volume',
+      '83': 'Standby',
+      '04': 'Menu Request',
+      '05': 'Menu Status',
+      '46': 'User Control Pressed - Channel Up',
+      '47': 'User Control Pressed - Channel Down'
+    };
+    return commandNames[command] || `Command ${command}`;
   }
 
   private parseCECCommand(line: string) {
