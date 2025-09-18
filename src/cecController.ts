@@ -25,6 +25,7 @@ export class CECController {
     isMuted: false,
     activeSource: false,
   };
+  private cecServiceWatcher: NodeJS.Timeout | null = null;
 
   // Callbacks pour les événements CEC
   private onPowerStateChange?: (isOn: boolean) => void;
@@ -113,6 +114,9 @@ export class CECController {
           // Marquer comme initialisé AVANT de scanner
           this.isInitialized = true;
           this.log.info('CEC controller initialized successfully');
+          
+          // Démarrer le watcher pour le service CEC
+          this.startCECServiceWatcher();
           
           // Scanner le bus CEC pour découvrir les appareils
           await this.scanCECDevices();
@@ -535,9 +539,90 @@ export class CECController {
     this.onMuteChange = callback;
   }
 
+  // Surveiller le fichier de communication avec le service CEC
+  private startCECServiceWatcher() {
+    const fs = require('fs');
+    const path = '/tmp/cec-to-homebridge.json';
+    
+    this.log.info('CEC: Starting CEC service file watcher...');
+    
+    this.cecServiceWatcher = setInterval(() => {
+      try {
+        if (fs.existsSync(path)) {
+          const data = fs.readFileSync(path, 'utf8');
+          const command = JSON.parse(data);
+          
+          this.log.info('CEC: Command received from CEC service:', command);
+          
+          switch (command.action) {
+            case 'power':
+              if (command.value === 'on') {
+                this.log.info('CEC: Power ON from CEC service');
+                this.currentState.isOn = true;
+                this.onPowerStateChange?.(true);
+              } else if (command.value === 'off') {
+                this.log.info('CEC: Power OFF from CEC service');
+                this.currentState.isOn = false;
+                this.onPowerStateChange?.(false);
+              }
+              break;
+              
+            case 'volume':
+              if (command.value === 'up') {
+                this.log.info('CEC: Volume UP from CEC service');
+                this.currentState.volume = Math.min(100, this.currentState.volume + 1);
+                this.onVolumeChange?.(this.currentState.volume);
+              } else if (command.value === 'down') {
+                this.log.info('CEC: Volume DOWN from CEC service');
+                this.currentState.volume = Math.max(0, this.currentState.volume - 1);
+                this.onVolumeChange?.(this.currentState.volume);
+              }
+              break;
+              
+            case 'mute':
+              this.log.info('CEC: Mute toggle from CEC service');
+              this.currentState.isMuted = !this.currentState.isMuted;
+              this.onMuteChange?.(this.currentState.isMuted);
+              break;
+          }
+          
+          // Supprimer le fichier après traitement
+          fs.unlinkSync(path);
+        }
+      } catch (error) {
+        this.log.error('CEC: Error reading CEC service file:', error);
+      }
+    }, 100); // Vérifier toutes les 100ms
+  }
+
+  private stopCECServiceWatcher() {
+    if (this.cecServiceWatcher) {
+      clearInterval(this.cecServiceWatcher);
+      this.cecServiceWatcher = null;
+      this.log.info('CEC: Stopped CEC service file watcher');
+    }
+  }
+
   // Getters pour l'état actuel
   getCurrentState(): CECState {
     return { ...this.currentState };
+  }
+
+  // Nettoyage des ressources
+  cleanup() {
+    this.log.info('CEC: Cleaning up CEC controller...');
+    
+    // Arrêter le watcher du service CEC
+    this.stopCECServiceWatcher();
+    
+    // Arrêter le processus CEC
+    if (this.cecProcess && !this.cecProcess.killed) {
+      this.cecProcess.kill();
+      this.cecProcess = null;
+    }
+    
+    this.isInitialized = false;
+    this.log.info('CEC: Cleanup completed');
   }
 
   getIsOn(): boolean {
