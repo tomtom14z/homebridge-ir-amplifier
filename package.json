@@ -1,0 +1,51 @@
+{
+  "name": "homebridge-ir-amplifier",
+  "version": "1.0.0",
+  "description": "Homebridge plugin for IR amplifier control with OCR volume detection and CEC support for Apple TV integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "amplifier",
+    "ir",
+    "broadlink",
+    "tplink",
+    "ocr",
+    "volume",
+    "cec",
+    "apple-tv",
+    "hdmi-cec"
+  ],
+  "author": "Thomas Vernouillet",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0",
+    "homebridge": ">=1.0.0"
+  },
+  "dependencies": {
+    "broadlinkjs-rm": "^0.9.0",
+    "tplink-smarthome-api": "^3.0.0",
+    "tesseract.js": "^4.1.1",
+    "node-cron": "^3.0.2",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "homebridge": "^1.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thomasvernouillet/homebridge-ir-amplifier.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thomasvernouillet/homebridge-ir-amplifier/issues"
+  },
+  "homepage": "https://github.com/thomasvernouillet/homebridge-ir-amplifier#readme"
+}

@@ -1,0 +1,138 @@
+{
+  "pluginAlias": "IRAmplifier",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "IR Amplifier",
+        "description": "Name of the platform in Homebridge"
+      },
+      "broadlink": {
+        "title": "Broadlink Configuration",
+        "type": "object",
+        "properties": {
+          "host": {
+            "title": "Broadlink Host",
+            "type": "string",
+            "format": "ipv4",
+            "description": "IP address of your Broadlink RM3 Pro"
+          },
+          "mac": {
+            "title": "Broadlink MAC Address",
+            "type": "string",
+            "pattern": "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$",
+            "description": "MAC address of your Broadlink RM3 Pro"
+          },
+          "commands": {
+            "title": "IR Commands",
+            "type": "object",
+            "properties": {
+              "power": {
+                "title": "Power Toggle Command",
+                "type": "string",
+                "description": "Hex IR command for power toggle"
+              },
+              "source": {
+                "title": "Source Toggle Command",
+                "type": "string",
+                "description": "Hex IR command for source toggle"
+              },
+              "volumeUp": {
+                "title": "Volume Up Command",
+                "type": "string",
+                "description": "Hex IR command for volume up"
+              },
+              "volumeDown": {
+                "title": "Volume Down Command",
+                "type": "string",
+                "description": "Hex IR command for volume down"
+              }
+            },
+            "required": ["power", "source", "volumeUp", "volumeDown"]
+          }
+        },
+        "required": ["host", "mac", "commands"]
+      },
+      "tplink": {
+        "title": "TP-Link Configuration",
+        "type": "object",
+        "properties": {
+          "host": {
+            "title": "TP-Link Host",
+            "type": "string",
+            "format": "ipv4",
+            "description": "IP address of your TP-Link HS110"
+          }
+        },
+        "required": ["host"]
+      },
+      "ocr": {
+        "title": "OCR Configuration",
+        "type": "object",
+        "properties": {
+          "cameraUrl": {
+            "title": "Camera URL",
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the camera pointing at the amplifier screen"
+          },
+          "checkInterval": {
+            "title": "Check Interval (ms)",
+            "type": "number",
+            "default": 30000,
+            "minimum": 5000,
+            "maximum": 300000,
+            "description": "Interval between OCR checks in milliseconds"
+          }
+        },
+        "required": ["cameraUrl"]
+      },
+      "cec": {
+        "title": "CEC Configuration",
+        "type": "object",
+        "properties": {
+          "deviceName": {
+            "title": "CEC Device Name",
+            "type": "string",
+            "default": "IR Amplifier",
+            "description": "Name of the device as it appears in CEC"
+          },
+          "physicalAddress": {
+            "title": "Physical Address",
+            "type": "string",
+            "default": "1.0.0.0",
+            "pattern": "^\\d+\\.\\d+\\.\\d+\\.\\d+$",
+            "description": "Physical address for CEC (format: x.x.x.x)"
+          },
+          "logicalAddress": {
+            "title": "Logical Address",
+            "type": "number",
+            "default": 5,
+            "minimum": 0,
+            "maximum": 15,
+            "description": "Logical address for CEC (0-15)"
+          },
+          "vendorId": {
+            "title": "Vendor ID",
+            "type": "string",
+            "default": "000000",
+            "pattern": "^[0-9A-Fa-f]{6}$",
+            "description": "Vendor ID for CEC (6 hex digits)"
+          },
+          "osdName": {
+            "title": "OSD Name",
+            "type": "string",
+            "default": "IR AMP",
+            "description": "Name displayed on screen for CEC"
+          }
+        },
+        "required": ["deviceName", "physicalAddress", "logicalAddress", "vendorId", "osdName"]
+      }
+    },
+    "required": ["name", "broadlink", "tplink", "ocr", "cec"]
+  }
+}

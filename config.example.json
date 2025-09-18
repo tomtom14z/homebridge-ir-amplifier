@@ -1,0 +1,32 @@
+{
+  "platforms": [
+    {
+      "platform": "IRAmplifier",
+      "name": "IR Amplifier",
+      "broadlink": {
+        "host": "192.168.1.100",
+        "mac": "AA:BB:CC:DD:EE:FF",
+        "commands": {
+          "power": "2600500000012a...",
+          "source": "2600500000012b...",
+          "volumeUp": "2600500000012c...",
+          "volumeDown": "2600500000012d..."
+        }
+      },
+      "tplink": {
+        "host": "192.168.1.101"
+      },
+      "ocr": {
+        "cameraUrl": "http://192.168.1.102:8080/snapshot",
+        "checkInterval": 30000
+      },
+      "cec": {
+        "deviceName": "IR Amplifier",
+        "physicalAddress": "1.0.0.0",
+        "logicalAddress": 5,
+        "vendorId": "000000",
+        "osdName": "IR AMP"
+      }
+    }
+  ]
+}
