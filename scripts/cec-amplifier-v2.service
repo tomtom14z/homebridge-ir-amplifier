@@ -1,0 +1,19 @@
+[Unit]
+Description=HDMI-CEC Audio Amplifier v2 for Homebridge IR Amplifier
+After=multi-user.target
+Wants=homebridge.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cec-amplifier-v2.sh
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+# Permissions pour accéder au device CEC
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target
