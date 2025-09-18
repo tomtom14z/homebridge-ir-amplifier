@@ -210,11 +210,16 @@ export class IRAmplifierAccessory {
 
   private initializeMonitoring() {
     // Monitor TP-Link power state
-    this.tplinkController.startPowerMonitoring((inUse: boolean) => {
+    this.tplinkController.startPowerMonitoring(async (inUse: boolean) => {
       if (inUse !== this.isOn) {
+        this.log.info('TP-Link: Power state changed:', this.isOn, '→', inUse);
         this.isOn = inUse;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('Power state changed via TP-Link monitoring:', this.isOn);
+        this.log.info('TP-Link: Updated HomeKit power state to:', this.isOn);
+        
+        // Synchroniser l'état CEC avec TP-Link
+        this.log.info('TP-Link: Synchronizing CEC state with TP-Link:', this.isOn);
+        await this.cecController.setPowerState(this.isOn);
       }
     });
 
@@ -223,32 +228,75 @@ export class IRAmplifierAccessory {
       this.checkOCRVolume();
     });
 
-    // Initial state check
-    this.getPowerState();
-    this.getVolume();
+    // Initial state check and synchronization
+    this.initializeStateSynchronization();
+  }
+
+  private async initializeStateSynchronization() {
+    this.log.info('Initializing state synchronization between TP-Link and CEC...');
+    
+    try {
+      // Récupérer l'état actuel de TP-Link
+      const tpLinkState = await this.getPowerState();
+      this.log.info('Initial TP-Link state:', tpLinkState);
+      
+      // Récupérer l'état actuel de CEC
+      const cecState = this.cecController.getIsOn();
+      this.log.info('Initial CEC state:', cecState);
+      
+      // Synchroniser CEC avec TP-Link (source de vérité)
+      if (tpLinkState !== cecState) {
+        this.log.info('Synchronizing CEC with TP-Link state:', tpLinkState);
+        await this.cecController.setPowerState(tpLinkState);
+      }
+      
+      // Récupérer le volume initial
+      await this.getVolume();
+      
+      this.log.info('State synchronization completed');
+    } catch (error) {
+      this.log.error('Error during state synchronization:', error);
+    }
   }
 
   private initializeCECCallbacks() {
     // Callback pour les changements d'état d'alimentation via CEC
-    this.cecController.onPowerStateChangeCallback((isOn: boolean) => {
+    this.cecController.onPowerStateChangeCallback(async (isOn: boolean) => {
       this.log.info('CEC: Power state change received from Apple TV:', isOn);
-      this.log.debug('CEC: Current amplifier state:', this.isOn, 'New state:', isOn);
+      this.log.debug('CEC: Current amplifier state (TP-Link):', this.isOn, 'New CEC state:', isOn);
       
-      if (isOn !== this.isOn) {
-        this.isOn = isOn;
+      // Vérifier l'état actuel de TP-Link
+      const currentTpLinkState = await this.tplinkController.getInUseState();
+      this.log.info('CEC: Current TP-Link state:', currentTpLinkState, 'CEC requested state:', isOn);
+      
+      if (isOn !== currentTpLinkState) {
+        this.log.info('CEC: Synchronizing amplifier state - TP-Link:', currentTpLinkState, '→ CEC:', isOn);
+        
+        // Envoyer la commande IR pour synchroniser l'amplificateur
+        if (isOn) {
+          this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
+          await this.broadlinkController.powerToggle();
+        } else {
+          this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
+          await this.broadlinkController.powerToggle();
+        }
+        
+        // Attendre un peu pour que la commande IR prenne effet
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Vérifier le nouvel état TP-Link
+        const newTpLinkState = await this.tplinkController.getInUseState();
+        this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
+        
+        // Mettre à jour l'état local et HomeKit
+        this.isOn = newTpLinkState;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
         
-        // Si l'Apple TV demande d'allumer l'amplificateur, envoyer la commande IR
-        if (isOn) {
-          this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command');
-          this.broadlinkController.powerToggle();
-        } else {
-          this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command');
-          this.broadlinkController.powerToggle();
-        }
+        // Notifier CEC de l'état final de l'amplificateur
+        await this.cecController.setPowerState(this.isOn);
       } else {
-        this.log.debug('CEC: Power state unchanged, no action needed');
+        this.log.debug('CEC: Amplifier state already synchronized, no action needed');
       }
     });
 
