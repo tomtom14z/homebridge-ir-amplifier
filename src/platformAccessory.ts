@@ -231,41 +231,64 @@ export class IRAmplifierAccessory {
   private initializeCECCallbacks() {
     // Callback pour les changements d'état d'alimentation via CEC
     this.cecController.onPowerStateChangeCallback((isOn: boolean) => {
-      this.log.info('CEC power state change received:', isOn);
+      this.log.info('CEC: Power state change received from Apple TV:', isOn);
+      this.log.debug('CEC: Current amplifier state:', this.isOn, 'New state:', isOn);
+      
       if (isOn !== this.isOn) {
         this.isOn = isOn;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+        this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
         
         // Si l'Apple TV demande d'allumer l'amplificateur, envoyer la commande IR
         if (isOn) {
+          this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command');
+          this.broadlinkController.powerToggle();
+        } else {
+          this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command');
           this.broadlinkController.powerToggle();
         }
+      } else {
+        this.log.debug('CEC: Power state unchanged, no action needed');
       }
     });
 
     // Callback pour les changements de volume via CEC
     this.cecController.onVolumeChangeCallback((volume: number) => {
-      this.log.info('CEC volume change received:', volume);
+      this.log.info('CEC: Volume change received from Apple TV:', volume);
+      this.log.debug('CEC: Current volume:', this.currentVolume, 'New volume:', volume);
+      
       if (Math.abs(volume - this.currentVolume) > 2) { // Seuil pour éviter les micro-ajustements
         this.currentVolume = volume;
         this.targetVolume = volume;
+        
+        this.log.info('CEC: Updating HomeKit volume to:', this.currentVolume);
         
         // Mettre à jour les services HomeKit
         this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
         this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
         
         // Synchroniser le volume via IR
+        this.log.info('CEC: Syncing volume to amplifier via IR commands');
         this.syncVolumeToTarget();
+      } else {
+        this.log.debug('CEC: Volume change too small, ignoring');
       }
     });
 
     // Callback pour les changements de mute via CEC
     this.cecController.onMuteChangeCallback((isMuted: boolean) => {
-      this.log.info('CEC mute state change received:', isMuted);
+      this.log.info('CEC: Mute state change received from Apple TV:', isMuted);
+      this.log.debug('CEC: Current mute state:', this.currentVolume === 0, 'New mute state:', isMuted);
+      
       // Ici on pourrait ajouter une logique de mute si l'amplificateur le supporte
       // Pour l'instant, on peut simuler le mute en mettant le volume à 0
       if (isMuted) {
+        this.log.info('CEC: Apple TV requested mute - setting volume to 0');
         this.setVolume(0);
+      } else {
+        this.log.info('CEC: Apple TV requested unmute - restoring previous volume');
+        // Restaurer le volume précédent (vous pourriez stocker le volume avant mute)
+        this.setVolume(50); // Volume par défaut
       }
     });
   }

@@ -41,6 +41,13 @@ export class CECController {
   private async initializeCEC() {
     try {
       this.log.info('Initializing CEC controller...');
+      this.log.debug('CEC Configuration:', {
+        deviceName: this.config.deviceName,
+        physicalAddress: this.config.physicalAddress,
+        logicalAddress: this.config.logicalAddress,
+        vendorId: this.config.vendorId,
+        osdName: this.config.osdName
+      });
       
       // Vérifier si cec-client est disponible
       await this.checkCECAvailability();
@@ -116,8 +123,13 @@ export class CECController {
     const lines = message.split('\n');
     
     for (const line of lines) {
-      if (line.includes('>>')) {
-        this.parseCECCommand(line);
+      if (line.trim()) {
+        this.log.debug('CEC Raw Message:', line.trim());
+        
+        if (line.includes('>>')) {
+          this.log.debug('CEC Command Detected:', line.trim());
+          this.parseCECCommand(line);
+        }
       }
     }
   }
@@ -159,17 +171,20 @@ export class CECController {
     }
 
     try {
+      this.log.debug(`CEC: Sending raw command to cec-client: ${command}`);
       this.cecProcess.stdin?.write(command + '\n');
-      this.log.debug('CEC command sent:', command);
+      this.log.debug('CEC: Command successfully sent to cec-client');
       return true;
     } catch (error) {
-      this.log.error('Failed to send CEC command:', error);
+      this.log.error('CEC: Failed to send command to cec-client:', error);
       return false;
     }
   }
 
   async setPowerState(isOn: boolean): Promise<boolean> {
     const command = isOn ? 'tx 4F:82:10:00' : 'tx 4F:82:10:00'; // Image View On/Standby
+    this.log.info(`CEC: Sending power state command - ${isOn ? 'ON' : 'OFF'}`);
+    this.log.debug(`CEC: Power command: ${command}`);
     return this.sendCECCommand(command);
   }
 
@@ -177,11 +192,15 @@ export class CECController {
     // Envoyer la commande de volume absolu
     const volumeHex = volume.toString(16).padStart(2, '0');
     const command = `tx 4F:50:${volumeHex}`; // User Control Pressed
+    this.log.info(`CEC: Sending volume command - Volume: ${volume} (0x${volumeHex})`);
+    this.log.debug(`CEC: Volume command: ${command}`);
     return this.sendCECCommand(command);
   }
 
   async setMute(isMuted: boolean): Promise<boolean> {
     const command = isMuted ? 'tx 4F:44' : 'tx 4F:45'; // Mute/Unmute
+    this.log.info(`CEC: Sending mute command - ${isMuted ? 'MUTE' : 'UNMUTE'}`);
+    this.log.debug(`CEC: Mute command: ${command}`);
     return this.sendCECCommand(command);
   }
 
