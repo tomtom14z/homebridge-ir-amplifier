@@ -76,14 +76,6 @@
                 "type": "string",
                 "format": "ipv4",
                 "description": "IP address of your TP-Link device"
-              },
-              "powerThreshold": {
-                "title": "Power Consumption Threshold (Watts)",
-                "type": "number",
-                "default": 5,
-                "minimum": 1,
-                "maximum": 100,
-                "description": "Minimum power consumption to consider amplifier as 'in use'"
               }
             },
             "required": ["host"]

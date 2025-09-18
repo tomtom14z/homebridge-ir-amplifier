@@ -62,35 +62,11 @@ export class TPLinkController {
         return false;
       }
 
-      // First check if device is powered on
-      const powerState = await this.device.getPowerState();
-      if (!powerState) {
-        this.log.debug('TP-Link device is OFF, inUse = false');
-        return false;
-      }
-
-      // If device is on, check power consumption to determine if amplifier is actually in use
-      if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
-        try {
-          const emeter = await this.device.getEmeterRealtime();
-          const powerConsumption = emeter.power;
-          this.log.debug('TP-Link power consumption:', powerConsumption, 'W');
-          
-          // Consider amplifier in use if power consumption > threshold
-          const threshold = this.config.tplink?.powerThreshold || 5;
-          const inUse = powerConsumption > threshold;
-          this.log.debug('TP-Link inUse state:', inUse, '(based on power consumption:', powerConsumption, 'W)');
-          return inUse;
-        } catch (emeterError) {
-          this.log.warn('Failed to get power consumption, falling back to power state');
-          // Fallback to power state if emeter fails
-          return powerState;
-        }
-      } else {
-        this.log.debug('Device does not support emeter, using power state');
-        // Fallback to power state if device doesn't support emeter
-        return powerState;
-      }
+      // Use the inUse state from the TP-Link SmartHome plugin
+      // This respects the cutoff configuration (e.g., 3W) set in the TP-Link plugin
+      const inUse = await this.device.getInUse();
+      this.log.debug('TP-Link inUse state:', inUse, '(from TP-Link SmartHome plugin)');
+      return inUse;
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
       return false;
