@@ -136,22 +136,53 @@ export class CECController {
     
     this.log.info('CEC: Scanning bus for connected devices...');
     
-    // Commandes pour scanner le bus CEC
-    const scanCommands = [
-      'scan',           // Scanner tous les appareils
-      'pow 0',          // Demander l'état de la TV (adresse 0)
-      'pow 4',          // Demander l'état de l'Apple TV (adresse 4)
-      'pow 5',          // Demander l'état de l'amplificateur (adresse 5)
-      'poll 0',         // Poller la TV
-      'poll 4',         // Poller l'Apple TV
-      'poll 5',         // Poller l'amplificateur
-    ];
+    // Utiliser une approche différente : exécuter cec-client en mode scan
+    try {
+      const { spawn } = require('child_process');
+      
+      // Exécuter cec-client en mode scan
+      const scanProcess = spawn('cec-client', ['-s', '-d', '1'], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      
+      let scanOutput = '';
+      
+      scanProcess.stdout.on('data', (data: any) => {
+        scanOutput += data.toString();
+      });
+      
+      scanProcess.stderr.on('data', (data: any) => {
+        this.log.debug('CEC scan stderr:', data.toString().trim());
+      });
+      
+      // Envoyer la commande scan
+      scanProcess.stdin.write('scan\n');
+      scanProcess.stdin.end();
+      
+      // Attendre la fin du processus
+      await new Promise((resolve) => {
+        scanProcess.on('close', (code: any) => {
+          this.log.info('CEC: Scan process completed with code:', code);
+          this.parseScanOutput(scanOutput);
+          resolve(code);
+        });
+      });
+      
+    } catch (error) {
+      this.log.error('CEC: Failed to run scan process:', error);
+      
+      // Fallback : utiliser les commandes individuelles
+      const scanCommands = [
+        'pow 0',          // Demander l'état de la TV (adresse 0)
+        'pow 4',          // Demander l'état de l'Apple TV (adresse 4)
+        'pow 5',          // Demander l'état de l'amplificateur (adresse 5)
+      ];
 
-    for (const command of scanCommands) {
-      this.log.debug(`CEC: Sending scan command: ${command}`);
-      await this.sendCECCommand(command);
-      // Petite pause entre les commandes
-      await new Promise(resolve => setTimeout(resolve, 500));
+      for (const command of scanCommands) {
+        this.log.debug(`CEC: Sending scan command: ${command}`);
+        await this.sendCECCommand(command);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
     
     this.log.info('CEC: Device scan completed');
@@ -184,6 +215,74 @@ export class CECController {
         }
       }
     }
+  }
+
+  private parseScanOutput(output: string) {
+    this.log.info('CEC: Parsing scan output...');
+    
+    const lines = output.split('\n');
+    let currentDevice = null;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      if (trimmedLine.includes('device #')) {
+        // Nouveau device trouvé
+        const match = trimmedLine.match(/device #(\d+):\s*(.+)/);
+        if (match) {
+          currentDevice = {
+            id: parseInt(match[1]),
+            name: match[2].trim()
+          };
+          this.log.info(`CEC SCAN: Found device #${currentDevice.id}: ${currentDevice.name}`);
+        }
+      } else if (currentDevice && trimmedLine.includes('address:')) {
+        const match = trimmedLine.match(/address:\s*(.+)/);
+        if (match) {
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} address: ${match[1].trim()}`);
+        }
+      } else if (currentDevice && trimmedLine.includes('vendor:')) {
+        const match = trimmedLine.match(/vendor:\s*(.+)/);
+        if (match) {
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} vendor: ${match[1].trim()}`);
+        }
+      } else if (currentDevice && trimmedLine.includes('osd string:')) {
+        const match = trimmedLine.match(/osd string:\s*(.+)/);
+        if (match) {
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} OSD: ${match[1].trim()}`);
+        }
+      } else if (currentDevice && trimmedLine.includes('power status:')) {
+        const match = trimmedLine.match(/power status:\s*(.+)/);
+        if (match) {
+          const powerStatus = match[1].trim();
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} power: ${powerStatus}`);
+          
+          // Synchroniser l'état de l'amplificateur (device #5) avec TP-Link
+          if (currentDevice.id === 5) {
+            this.syncAmplifierState(powerStatus);
+          }
+        }
+      } else if (currentDevice && trimmedLine.includes('CEC version:')) {
+        const match = trimmedLine.match(/CEC version:\s*(.+)/);
+        if (match) {
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} CEC version: ${match[1].trim()}`);
+        }
+      } else if (currentDevice && trimmedLine.includes('active source:')) {
+        const match = trimmedLine.match(/active source:\s*(.+)/);
+        if (match) {
+          this.log.info(`CEC SCAN: Device #${currentDevice.id} active source: ${match[1].trim()}`);
+        }
+      }
+    }
+  }
+
+  private syncAmplifierState(powerStatus: string) {
+    // Synchroniser l'état de l'amplificateur CEC avec TP-Link
+    const isOn = powerStatus === 'on';
+    this.log.info(`CEC: Syncing amplifier state - CEC: ${powerStatus}, TP-Link should be: ${isOn ? 'ON' : 'OFF'}`);
+    
+    // Notifier le callback de changement d'état
+    this.onPowerStateChange?.(isOn);
   }
 
   private parseScanResponse(line: string) {
@@ -339,29 +438,40 @@ export class CECController {
   private parseCECCommand(line: string) {
     // Parser les commandes CEC reçues
     if (line.includes('key pressed: power on')) {
-      this.log.info('CEC: Power on command received');
+      this.log.info('CEC: Power ON command received from Apple TV');
       this.currentState.isOn = true;
       this.onPowerStateChange?.(true);
     } else if (line.includes('key pressed: power off')) {
-      this.log.info('CEC: Power off command received');
+      this.log.info('CEC: Power OFF command received from Apple TV');
       this.currentState.isOn = false;
       this.onPowerStateChange?.(false);
     } else if (line.includes('key pressed: volume up')) {
-      this.log.info('CEC: Volume up command received');
+      this.log.info('CEC: Volume UP command received from Apple TV - will send IR command');
       this.currentState.volume = Math.min(100, this.currentState.volume + 1);
       this.onVolumeChange?.(this.currentState.volume);
     } else if (line.includes('key pressed: volume down')) {
-      this.log.info('CEC: Volume down command received');
+      this.log.info('CEC: Volume DOWN command received from Apple TV - will send IR command');
       this.currentState.volume = Math.max(0, this.currentState.volume - 1);
       this.onVolumeChange?.(this.currentState.volume);
     } else if (line.includes('key pressed: mute')) {
-      this.log.info('CEC: Mute command received');
+      this.log.info('CEC: Mute command received from Apple TV');
       this.currentState.isMuted = !this.currentState.isMuted;
       this.onMuteChange?.(this.currentState.isMuted);
     } else if (line.includes('key pressed: unmute')) {
-      this.log.info('CEC: Unmute command received');
+      this.log.info('CEC: Unmute command received from Apple TV');
       this.currentState.isMuted = false;
       this.onMuteChange?.(false);
+    }
+    
+    // Parser aussi les commandes de volume absolu via les codes CEC
+    if (line.includes('User Control Pressed - Volume Up')) {
+      this.log.info('CEC: Volume UP (CEC code) command received - will send IR command');
+      this.currentState.volume = Math.min(100, this.currentState.volume + 1);
+      this.onVolumeChange?.(this.currentState.volume);
+    } else if (line.includes('User Control Pressed - Volume Down')) {
+      this.log.info('CEC: Volume DOWN (CEC code) command received - will send IR command');
+      this.currentState.volume = Math.max(0, this.currentState.volume - 1);
+      this.onVolumeChange?.(this.currentState.volume);
     }
   }
 
