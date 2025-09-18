@@ -71,6 +71,7 @@ export class TPLinkController {
   }
 
   async getInUseState(): Promise<boolean> {
+    this.log.info('=== getInUseState() CALLED ===');
     try {
       if (!this.device) {
         this.log.error('TP-Link device not initialized');
