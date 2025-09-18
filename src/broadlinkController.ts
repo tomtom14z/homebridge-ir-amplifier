@@ -1,4 +1,5 @@
 import { Logger } from 'homebridge';
+// @ts-ignore
 import { BroadlinkRMPlatform } from 'broadlinkjs-rm';
 
 export interface IRAmplifierConfig {

@@ -1,4 +1,4 @@
-import { API, Characteristic, Logger, PlatformAccessory, Service } from 'homebridge';
+import { API, Characteristic, CharacteristicValue, Logger, PlatformAccessory, Service } from 'homebridge';
 import { IRAmplifierPlatform } from './index';
 import { BroadlinkController } from './broadlinkController';
 import { TPLinkController } from './tplinkController';
@@ -75,18 +75,19 @@ export class IRAmplifierAccessory {
   private Service: typeof Service;
   private Characteristic: typeof Characteristic;
 
-  private async setPowerState(value: boolean) {
+  private async setPowerState(value: CharacteristicValue) {
+    const boolValue = value as boolean;
     this.log.info('Setting power state to:', value);
     
-    if (value !== this.isOn) {
+    if (boolValue !== this.isOn) {
       // Envoyer la commande IR via Broadlink
       const success = await this.broadlinkController.powerToggle();
       if (success) {
-        this.isOn = value;
+        this.isOn = boolValue;
         this.log.info('Power state changed to:', value);
         
         // Notifier CEC de l'état de l'amplificateur
-        await this.cecController.setPowerState(value);
+        await this.cecController.setPowerState(boolValue);
       } else {
         this.log.error('Failed to change power state');
       }
@@ -101,9 +102,10 @@ export class IRAmplifierAccessory {
     return this.isOn;
   }
 
-  private async setVolume(value: number) {
+  private async setVolume(value: CharacteristicValue) {
+    const numValue = value as number;
     this.log.info('Setting volume to:', value);
-    this.targetVolume = value;
+    this.targetVolume = numValue;
     
     if (this.volumeSyncInProgress) {
       this.log.debug('Volume sync in progress, skipping');
@@ -113,7 +115,7 @@ export class IRAmplifierAccessory {
     await this.syncVolumeToTarget();
     
     // Notifier CEC du nouveau volume
-    await this.cecController.setVolume(value);
+    await this.cecController.setVolume(numValue);
   }
 
   private async getVolume(): Promise<number> {
@@ -126,9 +128,10 @@ export class IRAmplifierAccessory {
     return this.currentVolume;
   }
 
-  private async setVolumeBrightness(value: number) {
+  private async setVolumeBrightness(value: CharacteristicValue) {
+    const numValue = value as number;
     // Map brightness (0-100) to volume (0-100)
-    await this.setVolume(value);
+    await this.setVolume(numValue);
   }
 
   private async getVolumeBrightness(): Promise<number> {

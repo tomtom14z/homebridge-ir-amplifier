@@ -24,10 +24,10 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
     this.log.debug('Finished initializing platform:', this.config.name);
 
     // Initialize controllers
-    this.broadlinkController = new BroadlinkController(this.log, this.config);
-    this.tplinkController = new TPLinkController(this.log, this.config);
-    this.ocrController = new OCRController(this.log, this.config);
-    this.cecController = new CECController(this.log, this.config.cec);
+    this.broadlinkController = new BroadlinkController(this.log, this.config as any);
+    this.tplinkController = new TPLinkController(this.log, this.config as any);
+    this.ocrController = new OCRController(this.log, this.config as any);
+    this.cecController = new CECController(this.log, (this.config as any).cec);
 
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
@@ -62,3 +62,8 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
     }
   }
 }
+
+// Export the initializer function for Homebridge
+module.exports = (api: API) => {
+  api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, IRAmplifierPlatform);
+};

@@ -1,6 +1,7 @@
 import { Logger } from 'homebridge';
 import { createWorker } from 'tesseract.js';
 import axios from 'axios';
+// @ts-ignore
 import * as cron from 'node-cron';
 
 export interface OCRResult {
@@ -22,7 +23,7 @@ export class OCRController {
 
   private async initializeWorker() {
     try {
-      this.worker = await createWorker('eng');
+      this.worker = await createWorker();
       await this.worker.setParameters({
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz: -',
         tessedit_pageseg_mode: '8', // Single word
