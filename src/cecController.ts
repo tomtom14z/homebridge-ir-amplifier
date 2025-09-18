@@ -57,6 +57,9 @@ export class CECController {
       
       this.isInitialized = true;
       this.log.info('CEC controller initialized successfully');
+      
+      // Scanner périodiquement les appareils (toutes les 30 secondes)
+      this.startPeriodicScan();
     } catch (error) {
       this.log.error('Failed to initialize CEC controller:', error);
     }
@@ -109,14 +112,50 @@ export class CECController {
       });
 
       // Attendre un peu pour que le processus démarre
-      setTimeout(() => {
+      setTimeout(async () => {
         if (this.cecProcess && !this.cecProcess.killed) {
+          // Scanner le bus CEC pour découvrir les appareils
+          await this.scanCECDevices();
           resolve();
         } else {
           reject(new Error('Failed to start CEC process'));
         }
       }, 2000);
     });
+  }
+
+  private async scanCECDevices() {
+    this.log.info('CEC: Scanning bus for connected devices...');
+    
+    // Commandes pour scanner le bus CEC
+    const scanCommands = [
+      'scan',           // Scanner tous les appareils
+      'pow 0',          // Demander l'état de la TV (adresse 0)
+      'pow 4',          // Demander l'état de l'Apple TV (adresse 4)
+      'pow 5',          // Demander l'état de l'amplificateur (adresse 5)
+      'poll 0',         // Poller la TV
+      'poll 4',         // Poller l'Apple TV
+      'poll 5',         // Poller l'amplificateur
+    ];
+
+    for (const command of scanCommands) {
+      this.log.debug(`CEC: Sending scan command: ${command}`);
+      await this.sendCECCommand(command);
+      // Petite pause entre les commandes
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    this.log.info('CEC: Device scan completed');
+  }
+
+  private startPeriodicScan() {
+    // Scanner les appareils toutes les 30 secondes
+    setInterval(async () => {
+      if (this.isInitialized) {
+        this.log.debug('CEC: Periodic device scan...');
+        await this.scanCECDevices();
+      }
+    }, 30000);
   }
 
   private handleCECMessage(message: string) {
