@@ -66,20 +66,6 @@
                 "type": "string",
                 "format": "ipv4",
                 "description": "IP address of your TP-Link device"
-              },
-              "powerMonitoring": {
-                "title": "Enable Power Monitoring",
-                "type": "boolean",
-                "default": true,
-                "description": "Enable power consumption monitoring (requires HS110 or compatible model)"
-              },
-              "powerThreshold": {
-                "title": "Power Threshold (Watts)",
-                "type": "number",
-                "default": 1,
-                "minimum": 0.1,
-                "maximum": 100,
-                "description": "Minimum power consumption to consider device as 'in use'"
               }
             },
             "required": ["host"]

@@ -62,36 +62,11 @@ export class TPLinkController {
         return false;
       }
 
-      // Check if power monitoring is enabled in config (default to true)
-      const powerMonitoringEnabled = this.config.tplink?.powerMonitoring !== false;
-      
-      if (!powerMonitoringEnabled) {
-        this.log.debug('Power monitoring disabled in config - using power state instead');
-        const powerState = await this.device.getPowerState();
-        return powerState; // true = on, false = off
-      }
-
-      // Get power threshold from config (default 1W)
-      const powerThreshold = this.config.tplink?.powerThreshold || 1;
-      
-      // Try to get power consumption data using the correct API
-      try {
-        // Check if device supports emeter (energy monitoring)
-        if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
-          const emeter = await this.device.getEmeterRealtime();
-          const inUse = emeter.power > powerThreshold;
-          this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power, 'W', 'Threshold:', powerThreshold, 'W');
-          return inUse;
-        } else {
-          this.log.debug('Device does not support emeter, using power state');
-          const powerState = await this.device.getPowerState();
-          return powerState; // true = on, false = off
-        }
-      } catch (emeterError) {
-        this.log.warn('Failed to get emeter data, using power state:', (emeterError as Error).message);
-        const powerState = await this.device.getPowerState();
-        return powerState; // true = on, false = off
-      }
+      // Use "Outlet In Use" approach: based on power state (on/off)
+      // This is simpler and more reliable than power consumption monitoring
+      const powerState = await this.device.getPowerState();
+      this.log.debug('TP-Link outlet in use state:', powerState, '(based on power state)');
+      return powerState; // true = on/in use, false = off/not in use
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
       return false;
