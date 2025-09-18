@@ -15,9 +15,16 @@ export class TPLinkController {
 
   private async initializeDevice() {
     try {
+      this.log.info('=== TP-LINK DEVICE INITIALIZATION ===');
+      this.log.info('Connecting to TP-Link device at:', this.config.tplink.host);
+      
       this.device = await this.client.getDevice({ host: this.config.tplink.host });
       if (this.device) {
-        this.log.info('TP-Link device found:', this.device.alias);
+        this.log.info('TP-Link device found successfully!');
+        this.log.info('Device alias:', this.device.alias);
+        this.log.info('Device model:', this.device.model);
+        this.log.info('Device MAC:', this.device.mac);
+        this.log.info('Device IP:', this.device.host);
         
         // Log device capabilities
         this.log.info('Device capabilities:', {
@@ -27,12 +34,20 @@ export class TPLinkController {
         });
         
         if (this.device.supportsEmeter) {
-          this.log.info('Device supports power monitoring');
+          this.log.info('Device supports power monitoring (HS110, etc.)');
         } else {
           this.log.info('Device does not support power monitoring - will use relay state');
         }
+        
+        // Test initial connection
+        try {
+          const powerState = await this.device.getPowerState();
+          this.log.info('Initial power state test:', powerState);
+        } catch (testError) {
+          this.log.error('Failed to test initial power state:', testError);
+        }
       } else {
-        this.log.error('TP-Link device not found');
+        this.log.error('TP-Link device not found at IP:', this.config.tplink.host);
       }
     } catch (error) {
       this.log.error('Failed to initialize TP-Link device:', error);
