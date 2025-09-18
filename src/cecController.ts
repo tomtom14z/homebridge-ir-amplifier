@@ -175,10 +175,68 @@ export class CECController {
         // Logger TOUS les messages CEC du bus
         this.logCECBusMessage(line.trim());
         
+        // Parser les réponses de scan
+        this.parseScanResponse(line.trim());
+        
         if (line.includes('>>')) {
           this.log.debug('CEC Command Detected:', line.trim());
           this.parseCECCommand(line);
         }
+      }
+    }
+  }
+
+  private parseScanResponse(line: string) {
+    // Parser les réponses de scan de cec-client
+    if (line.includes('device #')) {
+      // Format: device #0: TV
+      const match = line.match(/device #(\d+):\s*(.+)/);
+      if (match) {
+        const deviceId = parseInt(match[1]);
+        const deviceName = match[2].trim();
+        this.log.info(`CEC SCAN: Found device #${deviceId}: ${deviceName}`);
+      }
+    } else if (line.includes('address:')) {
+      // Format: address: 0.0.0.0
+      const match = line.match(/address:\s*(.+)/);
+      if (match) {
+        const address = match[1].trim();
+        this.log.info(`CEC SCAN: Address: ${address}`);
+      }
+    } else if (line.includes('vendor:')) {
+      // Format: vendor: Panasonic
+      const match = line.match(/vendor:\s*(.+)/);
+      if (match) {
+        const vendor = match[1].trim();
+        this.log.info(`CEC SCAN: Vendor: ${vendor}`);
+      }
+    } else if (line.includes('osd string:')) {
+      // Format: osd string: TV
+      const match = line.match(/osd string:\s*(.+)/);
+      if (match) {
+        const osdName = match[1].trim();
+        this.log.info(`CEC SCAN: OSD Name: ${osdName}`);
+      }
+    } else if (line.includes('power status:')) {
+      // Format: power status: standby
+      const match = line.match(/power status:\s*(.+)/);
+      if (match) {
+        const powerStatus = match[1].trim();
+        this.log.info(`CEC SCAN: Power Status: ${powerStatus}`);
+      }
+    } else if (line.includes('CEC version:')) {
+      // Format: CEC version: 2.0
+      const match = line.match(/CEC version:\s*(.+)/);
+      if (match) {
+        const version = match[1].trim();
+        this.log.info(`CEC SCAN: CEC Version: ${version}`);
+      }
+    } else if (line.includes('active source:')) {
+      // Format: active source: no
+      const match = line.match(/active source:\s*(.+)/);
+      if (match) {
+        const activeSource = match[1].trim();
+        this.log.info(`CEC SCAN: Active Source: ${activeSource}`);
       }
     }
   }
