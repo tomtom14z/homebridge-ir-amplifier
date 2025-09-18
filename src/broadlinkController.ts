@@ -1,5 +1,6 @@
 import { Logger } from 'homebridge';
-import * as dgram from 'dgram';
+// @ts-ignore
+import Broadlink from 'kiwicam-broadlinkjs-rm';
 
 export interface IRAmplifierConfig {
   broadlink: {
@@ -22,25 +23,31 @@ export interface IRAmplifierConfig {
 }
 
 export class BroadlinkController {
-  private socket: dgram.Socket;
+  private broadlink: any;
   private device: any;
 
   constructor(
     private log: Logger,
     private config: IRAmplifierConfig,
   ) {
-    this.socket = dgram.createSocket('udp4');
+    this.broadlink = new Broadlink();
     this.initializeDevice();
   }
 
   private async initializeDevice() {
     try {
-      // Simulate device initialization
-      this.device = {
-        host: { address: this.config.broadlink.host },
-        mac: this.config.broadlink.mac
-      };
-      this.log.info('Broadlink device configured:', this.device.host.address);
+      const devices = await this.broadlink.discover();
+      this.device = devices.find((device: any) => 
+        device.host.address === this.config.broadlink.host ||
+        device.mac === this.config.broadlink.mac
+      );
+
+      if (!this.device) {
+        this.log.error('Broadlink device not found');
+        return;
+      }
+
+      this.log.info('Broadlink device found:', this.device.host.address);
     } catch (error) {
       this.log.error('Failed to initialize Broadlink device:', error);
     }
@@ -53,10 +60,10 @@ export class BroadlinkController {
         return false;
       }
 
-      // Log the command (in a real implementation, this would send the IR command)
-      this.log.info('IR command would be sent:', command, 'to', this.device.host.address);
-      
-      // Simulate command sending
+      // Convert hex string to buffer if needed
+      const commandBuffer = Buffer.from(command, 'hex');
+      await this.device.sendData(commandBuffer);
+      this.log.debug('IR command sent:', command);
       return true;
     } catch (error) {
       this.log.error('Failed to send IR command:', error);
@@ -80,9 +87,33 @@ export class BroadlinkController {
     return this.sendCommand(this.config.broadlink.commands.volumeDown);
   }
 
-  // Method to learn new IR commands (placeholder)
+  // Method to learn new IR commands
   async learnCommand(timeout: number = 10000): Promise<string | null> {
-    this.log.info('IR command learning not implemented in this version');
-    return null;
+    try {
+      if (!this.device) {
+        this.log.error('Broadlink device not initialized');
+        return null;
+      }
+
+      this.log.info('Learning IR command... Press the button on your remote');
+      const data = await this.device.enterLearning();
+      
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          this.log.warn('Learning timeout');
+          resolve(null);
+        }, timeout);
+
+        this.device.on('rawData', (data: Buffer) => {
+          clearTimeout(timer);
+          const hexCommand = data.toString('hex');
+          this.log.info('Learned command:', hexCommand);
+          resolve(hexCommand);
+        });
+      });
+    } catch (error) {
+      this.log.error('Failed to learn IR command:', error);
+      return null;
+    }
   }
 }
