@@ -18,6 +18,19 @@ export class TPLinkController {
       this.device = await this.client.getDevice({ host: this.config.tplink.host });
       if (this.device) {
         this.log.info('TP-Link device found:', this.device.alias);
+        
+        // Log device capabilities
+        this.log.info('Device capabilities:', {
+          supportsEmeter: this.device.supportsEmeter,
+          model: this.device.model,
+          deviceType: this.device.deviceType
+        });
+        
+        if (this.device.supportsEmeter) {
+          this.log.info('Device supports power monitoring');
+        } else {
+          this.log.info('Device does not support power monitoring - will use relay state');
+        }
       } else {
         this.log.error('TP-Link device not found');
       }
@@ -61,26 +74,23 @@ export class TPLinkController {
       // Get power threshold from config (default 1W)
       const powerThreshold = this.config.tplink?.powerThreshold || 1;
       
-      // Try to get power consumption data
+      // Try to get power consumption data using the correct API
       try {
-        const emeter = await this.device.getEmeterRealtime();
-        const inUse = emeter.power > powerThreshold;
-        this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power, 'W', 'Threshold:', powerThreshold, 'W');
-        return inUse;
-      } catch (emeterError) {
-        this.log.warn('Failed to get emeter data, trying alternative method:', (emeterError as Error).message);
-        
-        // Alternative: try to get power consumption directly
-        try {
-          const powerData = await this.device.getPowerConsumption();
-          const inUse = powerData > powerThreshold;
-          this.log.debug('TP-Link in use state (alternative):', inUse, 'Power:', powerData, 'W', 'Threshold:', powerThreshold, 'W');
+        // Check if device supports emeter (energy monitoring)
+        if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
+          const emeter = await this.device.getEmeterRealtime();
+          const inUse = emeter.power > powerThreshold;
+          this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power, 'W', 'Threshold:', powerThreshold, 'W');
           return inUse;
-        } catch (altError) {
-          this.log.warn('Alternative power method failed, using relay state:', (altError as Error).message);
+        } else {
+          this.log.debug('Device does not support emeter, using relay state');
           const relayState = await this.device.getRelayState();
           return relayState === 1; // 1 = on, 0 = off
         }
+      } catch (emeterError) {
+        this.log.warn('Failed to get emeter data, using relay state:', (emeterError as Error).message);
+        const relayState = await this.device.getRelayState();
+        return relayState === 1; // 1 = on, 0 = off
       }
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
@@ -95,8 +105,14 @@ export class TPLinkController {
         return 0;
       }
 
-      const emeter = await this.device.getEmeterRealtime();
-      return emeter.power;
+      // Check if device supports emeter (energy monitoring)
+      if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
+        const emeter = await this.device.getEmeterRealtime();
+        return emeter.power;
+      } else {
+        this.log.debug('Device does not support power monitoring');
+        return 0;
+      }
     } catch (error) {
       this.log.error('Failed to get TP-Link power consumption:', error);
       return 0;
