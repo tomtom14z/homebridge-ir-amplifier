@@ -55,11 +55,7 @@ export class CECController {
       // Démarrer le processus CEC
       await this.startCECProcess();
       
-      this.isInitialized = true;
-      this.log.info('CEC controller initialized successfully');
-      
-      // Scanner périodiquement les appareils (toutes les 30 secondes)
-      this.startPeriodicScan();
+      // L'initialisation et le scan sont maintenant gérés dans startCECProcess
     } catch (error) {
       this.log.error('Failed to initialize CEC controller:', error);
     }
@@ -114,8 +110,16 @@ export class CECController {
       // Attendre un peu pour que le processus démarre
       setTimeout(async () => {
         if (this.cecProcess && !this.cecProcess.killed) {
+          // Marquer comme initialisé AVANT de scanner
+          this.isInitialized = true;
+          this.log.info('CEC controller initialized successfully');
+          
           // Scanner le bus CEC pour découvrir les appareils
           await this.scanCECDevices();
+          
+          // Démarrer le scan périodique
+          this.startPeriodicScan();
+          
           resolve();
         } else {
           reject(new Error('Failed to start CEC process'));
@@ -125,6 +129,11 @@ export class CECController {
   }
 
   private async scanCECDevices() {
+    if (!this.isInitialized) {
+      this.log.warn('CEC: Cannot scan devices - controller not initialized');
+      return;
+    }
+    
     this.log.info('CEC: Scanning bus for connected devices...');
     
     // Commandes pour scanner le bus CEC
