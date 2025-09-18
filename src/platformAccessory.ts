@@ -16,6 +16,11 @@ export class IRAmplifierAccessory {
   private isSourceCorrect = false;
   private lastOCRCheck = 0;
   private volumeSyncInProgress = false;
+  
+  // Gestion de l'état temporaire pour TP-Link
+  private pendingStateChange = false;
+  private lastStateChangeTime = 0;
+  private stateChangeTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly platform: IRAmplifierPlatform,
@@ -79,46 +84,93 @@ export class IRAmplifierAccessory {
     const boolValue = value as boolean;
     this.log.info('Setting power state to:', value);
     
-    // Vérifier l'état actuel de TP-Link (source de vérité)
+    // Vérifier l'état actuel de TP-Link
     const currentTpLinkState = await this.tplinkController.getInUseState();
     this.log.info('Current TP-Link state (inUse):', currentTpLinkState, 'Requested state:', boolValue);
     
-    // Mettre à jour l'état local avec l'état réel de TP-Link
-    this.isOn = currentTpLinkState;
-    this.log.info('Accessory state synchronized with TP-Link:', this.isOn);
-    
     if (boolValue !== currentTpLinkState) {
+      // Marquer qu'un changement d'état est en cours
+      this.pendingStateChange = true;
+      this.lastStateChangeTime = Date.now();
+      
+      // Mettre à jour immédiatement l'état dans HomeKit (état temporaire)
+      this.isOn = boolValue;
+      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+      this.log.info('HomeKit state set to temporary state:', this.isOn);
+      
       // Envoyer la commande IR via Broadlink
       this.log.info('Sending IR command to change amplifier state from', currentTpLinkState, 'to', boolValue);
       const success = await this.broadlinkController.powerToggle();
       
       if (success) {
-        // Attendre que la commande IR prenne effet
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Vérifier le nouvel état de TP-Link
-        const newTpLinkState = await this.tplinkController.getInUseState();
-        this.log.info('After IR command - TP-Link state:', newTpLinkState);
-        
-        // Mettre à jour l'état local avec l'état réel de TP-Link
-        this.isOn = newTpLinkState;
-        this.log.info('Power state updated to:', this.isOn);
-        
-        // Mettre à jour HomeKit avec l'état réel
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('HomeKit state updated to:', this.isOn);
-        
-        // Notifier CEC de l'état réel de l'amplificateur
-        await this.cecController.setPowerState(this.isOn);
+        // Programmer une vérification différée de l'état TP-Link
+        this.scheduleStateVerification(boolValue);
       } else {
         this.log.error('Failed to change power state');
-        // Remettre l'état correct dans HomeKit
+        // Remettre l'état précédent en cas d'échec
+        this.isOn = currentTpLinkState;
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+        this.pendingStateChange = false;
       }
     } else {
       this.log.info('Amplifier state already matches requested state');
       // S'assurer que HomeKit reflète l'état réel
+      this.isOn = currentTpLinkState;
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+    }
+  }
+
+  private scheduleStateVerification(expectedState: boolean) {
+    // Annuler la vérification précédente si elle existe
+    if (this.stateChangeTimeout) {
+      clearTimeout(this.stateChangeTimeout);
+    }
+    
+    this.log.info('Scheduling state verification in 5 seconds for expected state:', expectedState);
+    
+    // Programmer la vérification après 5 secondes (délai pour que TP-Link se mette à jour)
+    this.stateChangeTimeout = setTimeout(async () => {
+      await this.verifyStateChange(expectedState);
+    }, 5000);
+  }
+
+  private async verifyStateChange(expectedState: boolean) {
+    try {
+      this.log.info('Verifying state change - expected:', expectedState);
+      
+      // Vérifier l'état actuel de TP-Link
+      const actualTpLinkState = await this.tplinkController.getInUseState();
+      this.log.info('TP-Link state after delay:', actualTpLinkState, 'Expected:', expectedState);
+      
+      if (actualTpLinkState === expectedState) {
+        // L'état correspond, confirmer
+        this.isOn = actualTpLinkState;
+        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+        this.log.info('State change confirmed - HomeKit updated to:', this.isOn);
+        
+        // Notifier CEC de l'état confirmé
+        await this.cecController.setPowerState(this.isOn);
+      } else {
+        // L'état ne correspond pas, corriger
+        this.log.warn('State mismatch detected - TP-Link:', actualTpLinkState, 'Expected:', expectedState);
+        this.log.info('Correcting HomeKit state to match TP-Link reality');
+        
+        this.isOn = actualTpLinkState;
+        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+        this.log.info('HomeKit state corrected to:', this.isOn);
+        
+        // Notifier CEC de l'état réel
+        await this.cecController.setPowerState(this.isOn);
+      }
+      
+      // Marquer que le changement d'état est terminé
+      this.pendingStateChange = false;
+      this.stateChangeTimeout = null;
+      
+    } catch (error) {
+      this.log.error('Error during state verification:', error);
+      this.pendingStateChange = false;
+      this.stateChangeTimeout = null;
     }
   }
 
@@ -267,23 +319,32 @@ export class IRAmplifierAccessory {
   }
 
   private startPeriodicStateVerification() {
-    // Vérifier l'état toutes les 10 secondes pour s'assurer de la cohérence
+    // Vérifier l'état toutes les 15 secondes pour s'assurer de la cohérence
     setInterval(async () => {
       try {
+        // Ne pas vérifier si un changement d'état est en cours
+        if (this.pendingStateChange) {
+          this.log.debug('Skipping periodic verification - state change in progress');
+          return;
+        }
+        
         const tpLinkState = await this.tplinkController.getInUseState();
         if (tpLinkState !== this.isOn) {
-          this.log.info('State mismatch detected - TP-Link:', tpLinkState, 'Accessory:', this.isOn);
+          this.log.info('Periodic check - State mismatch detected - TP-Link:', tpLinkState, 'Accessory:', this.isOn);
           this.log.info('Correcting accessory state to match TP-Link');
           
           // Corriger l'état de l'accessoire
           this.isOn = tpLinkState;
           this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
           this.log.info('Accessory state corrected to:', this.isOn);
+          
+          // Notifier CEC de l'état corrigé
+          await this.cecController.setPowerState(this.isOn);
         }
       } catch (error) {
         this.log.error('Error during periodic state verification:', error);
       }
-    }, 10000); // Vérifier toutes les 10 secondes
+    }, 15000); // Vérifier toutes les 15 secondes
   }
 
   private async initializeStateSynchronization() {
