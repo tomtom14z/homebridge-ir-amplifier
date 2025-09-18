@@ -65,9 +65,20 @@ export class TPLinkController {
       this.log.debug('=== TP-LINK INUSE DEBUG ===');
       this.log.debug('Device model:', this.device.model);
       this.log.debug('Device supportsEmeter:', this.device.supportsEmeter);
-      this.log.debug('Device has getEmeterRealtime:', typeof this.device.getEmeterRealtime === 'function');
 
-      // First check if device is powered on
+      // Try to get the inUse state directly from the device
+      // This should match the homebridge-tplink-smarthome plugin behavior
+      if (typeof this.device.getInUse === 'function') {
+        try {
+          const inUse = await this.device.getInUse();
+          this.log.info('TP-Link inUse state (direct method):', inUse);
+          return inUse;
+        } catch (error) {
+          this.log.warn('Direct getInUse method failed:', error);
+        }
+      }
+
+      // Fallback: Use power consumption method
       const powerState = await this.device.getPowerState();
       this.log.debug('TP-Link power state:', powerState);
       
@@ -79,34 +90,21 @@ export class TPLinkController {
       // For devices that support energy monitoring (HS110, etc), use power consumption
       if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
         try {
-          this.log.debug('Attempting to get emeter data...');
           const emeter = await this.device.getEmeterRealtime();
-          this.log.debug('Emeter data received:', emeter);
-          
           const powerConsumption = emeter.power;
           this.log.info('TP-Link power consumption:', powerConsumption, 'W');
           
-          // Test different thresholds to find the right one for your amplifier
-          const threshold3W = powerConsumption > 3;
-          const threshold5W = powerConsumption > 5;
-          const threshold10W = powerConsumption > 10;
-          
-          this.log.info('TP-Link power consumption:', powerConsumption, 'W');
-          this.log.info('TP-Link inUse thresholds - 3W:', threshold3W, '5W:', threshold5W, '10W:', threshold10W);
-          
-          // Use 5W threshold for now (more conservative)
-          const inUse = threshold5W;
-          this.log.info('TP-Link inUse state:', inUse, '(using 5W threshold)');
+          // Use 3W threshold to match your homebridge-tplink-smarthome plugin
+          const inUse = powerConsumption > 3;
+          this.log.info('TP-Link inUse state (emeter method):', inUse, '(power:', powerConsumption, 'W, threshold: 3W)');
           return inUse;
         } catch (emeterError) {
           this.log.error('Failed to get power consumption:', emeterError);
           this.log.warn('Falling back to power state');
-          // Fallback to power state if emeter fails
           return powerState;
         }
       } else {
         this.log.debug('Device does not support emeter, using power state');
-        // For devices without energy monitoring, use power state
         return powerState;
       }
     } catch (error) {
