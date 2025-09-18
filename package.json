@@ -29,7 +29,6 @@
     "homebridge": ">=1.0.0"
   },
   "dependencies": {
-    "broadlinkjs-rm": "^0.7.6",
     "tplink-smarthome-api": "^3.0.0",
     "tesseract.js": "^4.1.1",
     "node-cron": "^3.0.2",
