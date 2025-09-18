@@ -34,7 +34,17 @@
               "power": {
                 "title": "Power Toggle Command",
                 "type": "string",
-                "description": "Hex IR command for power toggle"
+                "description": "Hex IR command for power toggle (fallback)"
+              },
+              "powerOn": {
+                "title": "Power On Command",
+                "type": "string",
+                "description": "Hex IR command for power on (optional)"
+              },
+              "powerOff": {
+                "title": "Power Off Command",
+                "type": "string",
+                "description": "Hex IR command for power off (optional)"
               },
               "source": {
                 "title": "Source Toggle Command",

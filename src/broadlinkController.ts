@@ -8,6 +8,8 @@ export interface IRAmplifierConfig {
     mac: string;
     commands: {
       power: string;
+      powerOn?: string;
+      powerOff?: string;
       source: string;
       volumeUp: string;
       volumeDown: string;
@@ -93,6 +95,18 @@ export class BroadlinkController {
 
   async powerToggle(): Promise<boolean> {
     return this.sendCommand(this.config.broadlink.commands.power);
+  }
+
+  async powerOn(): Promise<boolean> {
+    // Utiliser la commande powerOn si disponible, sinon power
+    const command = this.config.broadlink.commands.powerOn || this.config.broadlink.commands.power;
+    return this.sendCommand(command);
+  }
+
+  async powerOff(): Promise<boolean> {
+    // Utiliser la commande powerOff si disponible, sinon power
+    const command = this.config.broadlink.commands.powerOff || this.config.broadlink.commands.power;
+    return this.sendCommand(command);
   }
 
   async sourceToggle(): Promise<boolean> {
