@@ -62,8 +62,15 @@ export class TPLinkController {
         return false;
       }
 
+      this.log.debug('=== TP-LINK INUSE DEBUG ===');
+      this.log.debug('Device model:', this.device.model);
+      this.log.debug('Device supportsEmeter:', this.device.supportsEmeter);
+      this.log.debug('Device has getEmeterRealtime:', typeof this.device.getEmeterRealtime === 'function');
+
       // First check if device is powered on
       const powerState = await this.device.getPowerState();
+      this.log.debug('TP-Link power state:', powerState);
+      
       if (!powerState) {
         this.log.debug('TP-Link device is OFF, inUse = false');
         return false;
@@ -72,16 +79,20 @@ export class TPLinkController {
       // For devices that support energy monitoring (HS110, etc), use power consumption
       if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
         try {
+          this.log.debug('Attempting to get emeter data...');
           const emeter = await this.device.getEmeterRealtime();
+          this.log.debug('Emeter data received:', emeter);
+          
           const powerConsumption = emeter.power;
-          this.log.debug('TP-Link power consumption:', powerConsumption, 'W');
+          this.log.info('TP-Link power consumption:', powerConsumption, 'W');
           
           // Use same threshold as homebridge-tplink-smarthome plugin (3W default)
           const inUse = powerConsumption > 3;
-          this.log.debug('TP-Link inUse state:', inUse, '(based on power consumption:', powerConsumption, 'W, threshold: 3W)');
+          this.log.info('TP-Link inUse state:', inUse, '(based on power consumption:', powerConsumption, 'W, threshold: 3W)');
           return inUse;
         } catch (emeterError) {
-          this.log.warn('Failed to get power consumption, falling back to power state');
+          this.log.error('Failed to get power consumption:', emeterError);
+          this.log.warn('Falling back to power state');
           // Fallback to power state if emeter fails
           return powerState;
         }
