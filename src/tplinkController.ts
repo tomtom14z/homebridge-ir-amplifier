@@ -78,25 +78,28 @@ export class TPLinkController {
         return false;
       }
 
-      this.log.debug('=== TP-LINK INUSE DEBUG ===');
-      this.log.debug('Device model:', this.device.model);
-      this.log.debug('Device supportsEmeter:', this.device.supportsEmeter);
+      this.log.info('=== TP-LINK INUSE DEBUG ===');
+      this.log.info('Device model:', this.device.model);
+      this.log.info('Device supportsEmeter:', this.device.supportsEmeter);
 
       // Skip direct getInUse method - it's not working correctly
       // Force use of power consumption method for HS110
-      this.log.debug('Skipping direct getInUse method, using power consumption method');
+      this.log.info('Skipping direct getInUse method, using power consumption method');
 
       // Fallback: Use power consumption method
+      this.log.info('Getting power state...');
       const powerState = await this.device.getPowerState();
-      this.log.debug('TP-Link power state:', powerState);
+      this.log.info('TP-Link power state:', powerState);
       
       if (!powerState) {
-        this.log.debug('TP-Link device is OFF, inUse = false');
+        this.log.info('TP-Link device is OFF, inUse = false');
         return false;
       }
 
       // For devices that support energy monitoring (HS110, etc), use power consumption
+      this.log.info('Checking if device supports emeter...');
       if (this.device.supportsEmeter && typeof this.device.getEmeterRealtime === 'function') {
+        this.log.info('Device supports emeter, getting emeter data...');
         try {
           const emeter = await this.device.getEmeterRealtime();
           const powerConsumption = emeter.power;
@@ -130,11 +133,12 @@ export class TPLinkController {
           return powerState;
         }
       } else {
-        this.log.debug('Device does not support emeter, using power state');
+        this.log.info('Device does not support emeter, using power state');
         return powerState;
       }
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
+      this.log.error('Error details:', error);
       return false;
     }
   }
