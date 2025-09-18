@@ -101,10 +101,19 @@ export class TPLinkController {
           const emeter = await this.device.getEmeterRealtime();
           const powerConsumption = emeter.power;
           this.log.info('TP-Link power consumption:', powerConsumption, 'W');
+          this.log.info('TP-Link emeter data:', emeter);
           
-          // Use 3W threshold to match your homebridge-tplink-smarthome plugin
-          const inUse = powerConsumption > 3;
-          this.log.info('TP-Link inUse state (emeter method):', inUse, '(power:', powerConsumption, 'W, threshold: 3W)');
+          // Use the same logic as homebridge-tplink-smarthome plugin
+          // Check if device is powered on first
+          if (!powerState) {
+            this.log.info('TP-Link device is OFF, inUse = false');
+            return false;
+          }
+          
+          // Use 3W threshold (same as your homebridge-tplink-smarthome config)
+          const threshold = 3; // This should match your inUseThreshold config
+          const inUse = powerConsumption > threshold;
+          this.log.info('TP-Link inUse state (emeter method):', inUse, '(power:', powerConsumption, 'W, threshold:', threshold, 'W)');
           
           // Log detailed emeter data for debugging
           this.log.debug('Full emeter data:', {
