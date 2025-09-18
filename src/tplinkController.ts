@@ -49,16 +49,39 @@ export class TPLinkController {
         return false;
       }
 
-      // Check if device supports emeter
-      if (typeof this.device.getEmeterRealtime !== 'function') {
-        this.log.warn('TP-Link device does not support power monitoring');
-        return false;
+      // Check if power monitoring is enabled in config (default to true)
+      const powerMonitoringEnabled = this.config.tplink?.powerMonitoring !== false;
+      
+      if (!powerMonitoringEnabled) {
+        this.log.debug('Power monitoring disabled in config - using relay state instead');
+        const relayState = await this.device.getRelayState();
+        return relayState === 1; // 1 = on, 0 = off
       }
 
-      const emeter = await this.device.getEmeterRealtime();
-      const inUse = emeter.power > 1; // Consider in use if power > 1W
-      this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power);
-      return inUse;
+      // Get power threshold from config (default 1W)
+      const powerThreshold = this.config.tplink?.powerThreshold || 1;
+      
+      // Try to get power consumption data
+      try {
+        const emeter = await this.device.getEmeterRealtime();
+        const inUse = emeter.power > powerThreshold;
+        this.log.debug('TP-Link in use state:', inUse, 'Power:', emeter.power, 'W', 'Threshold:', powerThreshold, 'W');
+        return inUse;
+      } catch (emeterError) {
+        this.log.warn('Failed to get emeter data, trying alternative method:', (emeterError as Error).message);
+        
+        // Alternative: try to get power consumption directly
+        try {
+          const powerData = await this.device.getPowerConsumption();
+          const inUse = powerData > powerThreshold;
+          this.log.debug('TP-Link in use state (alternative):', inUse, 'Power:', powerData, 'W', 'Threshold:', powerThreshold, 'W');
+          return inUse;
+        } catch (altError) {
+          this.log.warn('Alternative power method failed, using relay state:', (altError as Error).message);
+          const relayState = await this.device.getRelayState();
+          return relayState === 1; // 1 = on, 0 = off
+        }
+      }
     } catch (error) {
       this.log.error('Failed to get TP-Link in use state:', error);
       return false;
