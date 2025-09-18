@@ -494,7 +494,7 @@ export class CECController {
   }
 
   async setPowerState(isOn: boolean): Promise<boolean> {
-    const command = isOn ? 'tx 4F:82:10:00' : 'tx 4F:82:10:00'; // Image View On/Standby
+    const command = isOn ? 'tx 4F:82:10:00' : 'tx 4F:36:00'; // Image View On / Standby
     this.log.info(`CEC: Sending power state command - ${isOn ? 'ON' : 'OFF'}`);
     this.log.debug(`CEC: Power command: ${command}`);
     return this.sendCECCommand(command);
