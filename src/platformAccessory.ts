@@ -456,10 +456,10 @@ export class IRAmplifierAccessory {
         // Envoyer la commande IR pour synchroniser l'amplificateur
         if (isOn) {
           this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
-          await this.broadlinkController.powerToggle();
+          await this.broadlinkController.powerOn();
         } else {
           this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
-          await this.broadlinkController.powerToggle();
+          await this.broadlinkController.powerOff();
         }
         
         // Attendre un peu pour que la commande IR prenne effet

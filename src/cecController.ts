@@ -438,11 +438,11 @@ export class CECController {
   private parseCECCommand(line: string) {
     // Parser les commandes CEC reçues
     if (line.includes('key pressed: power on')) {
-      this.log.info('CEC: Power ON command received from Apple TV');
+      this.log.info('CEC: Power ON command received from Apple TV - triggering amplifier ON');
       this.currentState.isOn = true;
       this.onPowerStateChange?.(true);
     } else if (line.includes('key pressed: power off')) {
-      this.log.info('CEC: Power OFF command received from Apple TV');
+      this.log.info('CEC: Power OFF command received from Apple TV - triggering amplifier OFF');
       this.currentState.isOn = false;
       this.onPowerStateChange?.(false);
     } else if (line.includes('key pressed: volume up')) {
