@@ -1,6 +1,6 @@
 {
   "name": "homebridge-ir-amplifier",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "description": "Homebridge plugin for IR amplifier control with OCR volume detection and CEC support for Apple TV integration",
   "main": "dist/index.js",
   "scripts": {
