@@ -1,19 +1,17 @@
 [Unit]
 Description=CEC Panasonic Ampli for Homebridge IR Amplifier
-After=multi-user.target
-Wants=homebridge.service
+After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cec-panasonic-ampli.sh
-Restart=always
-RestartSec=15
 User=root
+Group=root
+WorkingDirectory=/var/lib/homebridge/node_modules/homebridge-ir-amplifier
+ExecStart=/var/lib/homebridge/node_modules/homebridge-ir-amplifier/scripts/cec-panasonic-ampli.sh
+Restart=always
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# Permissions pour accéder au device CEC
-SupplementaryGroups=video
 
 [Install]
 WantedBy=multi-user.target

@@ -23,10 +23,11 @@ notify_homebridge() {
     local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
     echo "$json_data" > /tmp/cec-to-homebridge.json.tmp
     
-    # Définir les permissions 666 pour que root et homebridge puissent accéder au fichier
+    # Définir le propriétaire et les permissions pour Homebridge
+    chown homebridge:homebridge /tmp/cec-to-homebridge.json.tmp
     chmod 666 /tmp/cec-to-homebridge.json.tmp
     mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
-    log "📱 File created with permissions 666 (root:root, accessible by homebridge)"
+    log "📱 File created with owner homebridge:homebridge and permissions 666"
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
 }
 
@@ -80,9 +81,10 @@ sudo cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     # Detect User Control Pressed (0x44) for volume/mute/power buttons
     if echo "$line" | grep -iq "user control pressed|0x44|user-rc-button|rc code pressed"; then
         log "🎛️ TELECOMMANDE détectée ! (possible volume/mute/power)"
-        
+    fi
+    
     # Volume Up (volume-up or 0x41) - détecter sur la ligne suivante
-    elif echo "$line" | grep -iq "ui-cmd: volume-up|volume-up|0x41"; then
+    if echo "$line" | grep -iq "ui-cmd: volume-up|volume-up|0x41"; then
         log "🔊 VOLUME UP Panasonic!"
         amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
         notify_homebridge "volume" "up"
