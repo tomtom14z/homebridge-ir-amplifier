@@ -534,7 +534,16 @@ export class IRAmplifierAccessory {
   private externalCECWatcher: NodeJS.Timeout | null = null;
 
   private async handleCECPowerOn() {
-    this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
+    // Vérifier l'état actuel de l'amplificateur avant d'envoyer la commande
+    const currentTpLinkState = await this.tplinkController.getInUseState();
+    this.log.info('CEC: Apple TV requested amplifier ON - current TP-Link state:', currentTpLinkState);
+    
+    if (currentTpLinkState) {
+      this.log.info('CEC: Amplifier is already ON - skipping IR command to avoid unnecessary power toggle');
+      return;
+    }
+    
+    this.log.info('CEC: Amplifier is OFF - sending IR power command to turn ON');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
     const success = await this.broadlinkController.powerOn();
@@ -559,7 +568,16 @@ export class IRAmplifierAccessory {
   }
 
   private async handleCECPowerOff() {
-    this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
+    // Vérifier l'état actuel de l'amplificateur avant d'envoyer la commande
+    const currentTpLinkState = await this.tplinkController.getInUseState();
+    this.log.info('CEC: Apple TV requested amplifier OFF - current TP-Link state:', currentTpLinkState);
+    
+    if (!currentTpLinkState) {
+      this.log.info('CEC: Amplifier is already OFF - skipping IR command to avoid unnecessary power toggle');
+      return;
+    }
+    
+    this.log.info('CEC: Amplifier is ON - sending IR power command to turn OFF');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
     const success = await this.broadlinkController.powerOff();
