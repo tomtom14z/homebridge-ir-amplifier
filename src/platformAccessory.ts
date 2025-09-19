@@ -531,94 +531,51 @@ export class IRAmplifierAccessory {
   private externalCECWatcher: NodeJS.Timeout | null = null;
 
   private async handleCECPowerOn() {
-    this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
-    const success = await this.broadlinkController.powerOn();
+    this.log.info('CEC: Apple TV requested amplifier ON - updating HomeKit state to trigger IR command');
     
-    if (success) {
-      this.log.info('CEC: Power ON command sent successfully');
-      
-      // Attendre un peu pour que la commande IR prenne effet
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Vérifier le nouvel état TP-Link
-      const newTpLinkState = await this.tplinkController.getInUseState();
-      this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
-      
-      // Mettre à jour l'état local et HomeKit
-      this.isOn = newTpLinkState;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
-    } else {
-      this.log.error('CEC: Failed to send power ON command');
-    }
+    // Mettre à jour l'état HomeKit (cela déclenchera setPowerState qui enverra la commande IR)
+    this.isOn = true;
+    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+    this.log.info('CEC: HomeKit power state updated to ON - this will trigger IR command via setPowerState callback');
   }
 
   private async handleCECPowerOff() {
-    this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
-    const success = await this.broadlinkController.powerOff();
+    this.log.info('CEC: Apple TV requested amplifier OFF - updating HomeKit state to trigger IR command');
     
-    if (success) {
-      this.log.info('CEC: Power OFF command sent successfully');
-      
-      // Attendre un peu pour que la commande IR prenne effet
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Vérifier le nouvel état TP-Link
-      const newTpLinkState = await this.tplinkController.getInUseState();
-      this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
-      
-      // Mettre à jour l'état local et HomeKit
-      this.isOn = newTpLinkState;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
-    } else {
-      this.log.error('CEC: Failed to send power OFF command');
-    }
+    // Mettre à jour l'état HomeKit (cela déclenchera setPowerState qui enverra la commande IR)
+    this.isOn = false;
+    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+    this.log.info('CEC: HomeKit power state updated to OFF - this will trigger IR command via setPowerState callback');
   }
 
   private async handleCECVolumeUp() {
-    this.log.info('CEC: Volume UP requested - sending IR volume up command');
-    const success = await this.broadlinkController.volumeUp();
+    this.log.info('CEC: Volume UP requested - updating HomeKit volume to trigger IR command');
     
-    if (success) {
-      // Mettre à jour le volume local seulement si la commande IR a réussi
-      this.currentVolume = Math.min(100, this.currentVolume + 1);
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Volume UP command sent successfully, volume now:', this.currentVolume);
-    } else {
-      this.log.error('CEC: Failed to send volume UP command');
-    }
+    // Mettre à jour le volume HomeKit (cela déclenchera setVolume qui enverra la commande IR)
+    this.currentVolume = Math.min(100, this.currentVolume + 1);
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    this.log.info('CEC: HomeKit volume updated to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
   }
 
   private async handleCECVolumeDown() {
-    this.log.info('CEC: Volume DOWN requested - sending IR volume down command');
-    const success = await this.broadlinkController.volumeDown();
+    this.log.info('CEC: Volume DOWN requested - updating HomeKit volume to trigger IR command');
     
-    if (success) {
-      // Mettre à jour le volume local seulement si la commande IR a réussi
-      this.currentVolume = Math.max(0, this.currentVolume - 1);
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.currentVolume);
-    } else {
-      this.log.error('CEC: Failed to send volume DOWN command');
-    }
+    // Mettre à jour le volume HomeKit (cela déclenchera setVolume qui enverra la commande IR)
+    this.currentVolume = Math.max(0, this.currentVolume - 1);
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    this.log.info('CEC: HomeKit volume updated to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
   }
 
   private async handleCECMuteToggle() {
-    this.log.info('CEC: Mute toggle requested - sending IR mute command');
-    const success = await this.broadlinkController.mute();
+    this.log.info('CEC: Mute toggle requested - updating HomeKit volume to trigger IR command');
     
-    if (success) {
-      // Basculer l'état mute
-      this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Mute command sent successfully, volume now:', this.currentVolume);
-    } else {
-      this.log.error('CEC: Failed to send mute command');
-    }
+    // Basculer l'état mute dans HomeKit (cela déclenchera setVolume qui enverra la commande IR)
+    this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    this.log.info('CEC: HomeKit volume toggled to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
   }
 
   private cleanup() {
