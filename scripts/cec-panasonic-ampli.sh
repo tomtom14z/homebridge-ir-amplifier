@@ -3,7 +3,7 @@
 # CEC Panasonic Ampli - using cec-follower with corrected options for your version
 # Script fonctionnel de Grok intégré dans le plugin Homebridge IR Amplifier
 
-LOG_FILE="/var/log/cec-panasonic-ampli.log"
+LOG_FILE="/tmp/cec-panasonic-ampli.log"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -21,14 +21,14 @@ notify_homebridge() {
     
     # Créer le JSON de manière atomique pour éviter la corruption
     local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
-    echo "$json_data" > /tmp/cec-to-homebridge.json.tmp
+    echo "$json_data" > /var/lib/homebridge/cec-to-homebridge.json.tmp
     
     # Définir le propriétaire et les permissions pour Homebridge
-    chown homebridge:homebridge /tmp/cec-to-homebridge.json.tmp
-    chmod 666 /tmp/cec-to-homebridge.json.tmp
-    mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
+    chown homebridge:homebridge /var/lib/homebridge/cec-to-homebridge.json.tmp
+    chmod 666 /var/lib/homebridge/cec-to-homebridge.json.tmp
+    mv /var/lib/homebridge/cec-to-homebridge.json.tmp /var/lib/homebridge/cec-to-homebridge.json
     log "📱 File created with owner homebridge:homebridge and permissions 666"
-    log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
+    log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
 log "🎛️ CEC Panasonic Ampli - using cec-follower"
@@ -52,28 +52,28 @@ fi
 
 # 1. Configure Audio System
 log "🔧 Configuring Audio System..."
-sudo cec-ctl -d /dev/cec0 --audio -o "Panasonic HT" >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio -o "Panasonic HT" >/dev/null 2>&1
 sleep 1
-sudo cec-ctl -d /dev/cec0 --audio -V 008045 >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio -V 008045 >/dev/null 2>&1
 sleep 1
-sudo cec-ctl -d /dev/cec0 --cec-version-1.4 >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --cec-version-1.4 >/dev/null 2>&1
 sleep 1
 
 # 2. Set Features (including system audio mode support)
 log "📡 Setting Features..."
-sudo cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
-sudo cec-ctl -d /dev/cec0 --audio --feat-sink-has-arc-tx >/dev/null 2>&1
-sudo cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio --feat-sink-has-arc-tx >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
 
 # 3. Verification
 log "📊 Verification..."
-sudo cec-ctl -d /dev/cec0 -S 2>&1 | tee -a "$LOG_FILE"
+cec-ctl -d /dev/cec0 -S 2>&1 | tee -a "$LOG_FILE"
 
 # 4. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
 log "📡 Starting cec-follower monitoring (with verbose, wall-clock timestamps, show-msgs, show-state) - Ctrl+C to stop"
 log "🎛️ Select 'Home Cinema' in VIERA Link and test volume/power!"
 
-sudo cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
+cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     
     log "EVENT: $line"
@@ -90,22 +90,22 @@ sudo cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "volume" "up"
         
     # Volume Down (volume-down or 0x42)
-    elif echo "$line" | grep -iq "ui-cmd: volume-down|volume-down|0x42"; then
+    if echo "$line" | grep -iq "ui-cmd: volume-down|volume-down|0x42"; then
         log "🔉 VOLUME DOWN Panasonic!"
         amixer set Master 2%- >/dev/null 2>&1
         notify_homebridge "volume" "down"
         
     # Mute (mute or 0x43)
-    elif echo "$line" | grep -iq "ui-cmd: mute|mute|0x43"; then
+    if echo "$line" | grep -iq "ui-cmd: mute|mute|0x43"; then
         log "🔇 MUTE Panasonic!"
         amixer set Master toggle >/dev/null 2>&1
         notify_homebridge "mute" "toggle"
     
     # Power-related User Control (expand if your remote sends these for power)
-    elif echo "$line" | grep -iq "ui-cmd: power-on|power-on|0x6B|power|0x40|power-toggle|0x6D"; then
+    if echo "$line" | grep -iq "ui-cmd: power-on|power-on|0x6B|power|0x40|power-toggle|0x6D"; then
         log "🔋 POWER ON/Toggle Panasonic! (via user control)"
         notify_homebridge "power" "on"
-    elif echo "$line" | grep -iq "ui-cmd: power-off|power-off|0x6C"; then
+    if echo "$line" | grep -iq "ui-cmd: power-off|power-off|0x6C"; then
         log "🛑 POWER OFF Panasonic! (via user control)"
         notify_homebridge "power" "standby"
     fi

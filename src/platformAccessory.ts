@@ -445,7 +445,7 @@ export class IRAmplifierAccessory {
   private startExternalCECWatcher() {
     // Surveiller le fichier de communication avec le service CEC externe
     const fs = require('fs');
-    const path = '/tmp/cec-to-homebridge.json';
+    const path = '/var/lib/homebridge/cec-to-homebridge.json';
     
     this.log.info('Starting external CEC service watcher...');
     
