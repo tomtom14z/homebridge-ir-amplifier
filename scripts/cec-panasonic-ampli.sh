@@ -160,6 +160,12 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "power" "on"
     fi
     
+    # Power On (via REPORT_POWER_STATUS: pwr-state: on)
+    if echo "$line" | grep -iq "pwr-state: on.*0x00"; then
+        log "🔋 POWER ON Panasonic! (via power status report)"
+        notify_homebridge "power" "on"
+    fi
+    
     # Standby (standby or 0x36)
     if echo "$line" | grep -iq "STANDBY.*0x36"; then
         log "🛑 STANDBY Panasonic!"
