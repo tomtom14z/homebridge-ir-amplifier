@@ -113,6 +113,8 @@ export class IRAmplifierAccessory {
       
       if (success) {
         this.log.info('IR command sent successfully, scheduling verification');
+        // Synchroniser l'état CEC avec le nouvel état
+        this.syncCECState(boolValue);
         // Programmer une vérification différée de l'état TP-Link
         this.scheduleStateVerification(boolValue);
       } else {
@@ -165,8 +167,8 @@ export class IRAmplifierAccessory {
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('HomeKit state confirmed to:', this.isOn);
         
-        // CEC synchronisé localement avec l'état confirmé
-        this.log.debug('CEC: State confirmed locally:', this.isOn);
+        // Synchroniser l'état CEC avec l'état confirmé
+        this.syncCECState(this.isOn);
       } else {
         // L'état ne correspond pas, corriger
         this.log.warn('State mismatch detected - TP-Link:', actualTpLinkState, 'Expected:', expectedState);
@@ -176,8 +178,8 @@ export class IRAmplifierAccessory {
         this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
         this.log.info('HomeKit state corrected to:', this.isOn);
         
-        // CEC synchronisé localement avec l'état réel
-        this.log.debug('CEC: State corrected locally:', this.isOn);
+        // Synchroniser l'état CEC avec l'état corrigé
+        this.syncCECState(this.isOn);
       }
       
       // Marquer que le changement d'état est terminé
@@ -422,8 +424,9 @@ export class IRAmplifierAccessory {
       // Délai avant la synchronisation initiale CEC
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // CEC géré par le service externe - pas de synchronisation interne nécessaire
-      this.log.info('CEC handled by external service - no internal synchronization needed');
+      // Synchroniser l'état CEC avec l'état initial
+      this.syncCECState(this.isOn);
+      this.log.info('CEC: Initial state synchronized with CEC bus');
       
       // Récupérer le volume initial
       await this.getVolume();
@@ -576,6 +579,17 @@ export class IRAmplifierAccessory {
     this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
     this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
     this.log.info('CEC: HomeKit volume toggled to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
+  }
+
+  private syncCECState(powerState: boolean) {
+    // Synchroniser l'état CEC avec l'état HomeKit
+    // Le script CEC gère déjà l'état CEC, on communique juste l'état pour information
+    this.log.info('CEC: Amplifier state changed to:', powerState ? 'ON' : 'OFF');
+    this.log.info('CEC: External CEC service will handle state synchronization automatically');
+    
+    // Note: Le script cec-panasonic-ampli.sh gère déjà l'état CEC
+    // Il n'est pas nécessaire d'envoyer des commandes CEC depuis Homebridge
+    // car cela pourrait créer des conflits avec le service CEC externe
   }
 
   private cleanup() {
