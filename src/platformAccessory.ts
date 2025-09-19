@@ -552,33 +552,54 @@ export class IRAmplifierAccessory {
   }
 
   private async handleCECVolumeUp() {
-    this.log.info('CEC: Volume UP requested - updating HomeKit volume to trigger IR command');
+    this.log.info('CEC: Volume UP requested - sending IR volume up command');
     
-    // Mettre à jour le volume HomeKit (cela déclenchera setVolume qui enverra la commande IR)
-    this.currentVolume = Math.min(100, this.currentVolume + 1);
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-    this.log.info('CEC: HomeKit volume updated to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
+    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
+    const success = await this.broadlinkController.volumeUp();
+    
+    if (success) {
+      // Mettre à jour le volume local seulement si la commande IR a réussi
+      this.currentVolume = Math.min(100, this.currentVolume + 1);
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Volume UP command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send volume UP command');
+    }
   }
 
   private async handleCECVolumeDown() {
-    this.log.info('CEC: Volume DOWN requested - updating HomeKit volume to trigger IR command');
+    this.log.info('CEC: Volume DOWN requested - sending IR volume down command');
     
-    // Mettre à jour le volume HomeKit (cela déclenchera setVolume qui enverra la commande IR)
-    this.currentVolume = Math.max(0, this.currentVolume - 1);
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-    this.log.info('CEC: HomeKit volume updated to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
+    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
+    const success = await this.broadlinkController.volumeDown();
+    
+    if (success) {
+      // Mettre à jour le volume local seulement si la commande IR a réussi
+      this.currentVolume = Math.max(0, this.currentVolume - 1);
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send volume DOWN command');
+    }
   }
 
   private async handleCECMuteToggle() {
-    this.log.info('CEC: Mute toggle requested - updating HomeKit volume to trigger IR command');
+    this.log.info('CEC: Mute toggle requested - sending IR mute command');
     
-    // Basculer l'état mute dans HomeKit (cela déclenchera setVolume qui enverra la commande IR)
-    this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-    this.log.info('CEC: HomeKit volume toggled to:', this.currentVolume, '- this will trigger IR command via setVolume callback');
+    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
+    const success = await this.broadlinkController.mute();
+    
+    if (success) {
+      // Basculer l'état mute
+      this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Mute command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send mute command');
+    }
   }
 
   private syncCECState(powerState: boolean) {
