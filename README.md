@@ -40,8 +40,8 @@ cec-client --help
 ### 2. Installation du plugin
 
 ```bash
-# Via npm (recommandé)
-npm install -g homebridge-ir-amplifier
+# Via npm (recommandé) - Installation automatique du service CEC
+sudo npm install -g homebridge-ir-amplifier
 
 # Ou depuis les sources
 git clone https://github.com/thomasvernouillet/homebridge-ir-amplifier.git
