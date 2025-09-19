@@ -1,3 +1,4 @@
+import * as fs from 'fs';  // For file watching (Node.js built-in)
 import { API, Characteristic, CharacteristicValue, Logger, PlatformAccessory, Service } from 'homebridge';
 import { IRAmplifierPlatform } from './index';
 import { BroadlinkController } from './broadlinkController';
@@ -484,7 +485,19 @@ export class IRAmplifierAccessory {
           }
           
           // Supprimer le fichier après traitement
-          fs.unlinkSync(path);
+          try {
+            fs.unlinkSync(path);
+          } catch (unlinkError: any) {
+            this.log.warn('CEC: Could not delete communication file (permissions issue):', unlinkError.message);
+            // Essayer de changer les permissions et supprimer
+            try {
+              fs.chmodSync(path, 0o666);
+              fs.unlinkSync(path);
+              this.log.info('CEC: File deleted after permission fix');
+            } catch (retryError: any) {
+              this.log.error('CEC: Still cannot delete file:', retryError.message);
+            }
+          }
         }
       } catch (error) {
         this.log.error('CEC: Error reading external CEC service file:', error);

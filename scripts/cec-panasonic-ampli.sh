@@ -13,6 +13,8 @@ notify_homebridge() {
     local action="$1"
     local value="$2"
     echo "{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}" > /tmp/cec-to-homebridge.json
+    # Définir les permissions pour que Homebridge puisse lire et supprimer le fichier
+    chmod 666 /tmp/cec-to-homebridge.json
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
 }
 
