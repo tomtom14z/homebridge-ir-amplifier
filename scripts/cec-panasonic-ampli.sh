@@ -23,19 +23,10 @@ notify_homebridge() {
     local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
     echo "$json_data" > /tmp/cec-to-homebridge.json.tmp
     
-    # Définir le propriétaire et les permissions pour Homebridge
-    # Essayer différents utilisateurs Homebridge possibles
-    for user in homebridge pi homebridge-user; do
-        if id "$user" &>/dev/null; then
-            chown "$user:$user" /tmp/cec-to-homebridge.json.tmp
-            log "📱 Set file owner to: $user"
-            break
-        fi
-    done
-    
-    # Définir les permissions pour que Homebridge puisse lire et modifier le fichier
+    # Définir les permissions 666 pour que root et homebridge puissent accéder au fichier
     chmod 666 /tmp/cec-to-homebridge.json.tmp
     mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
+    log "📱 File created with permissions 666 (root:root, accessible by homebridge)"
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
 }
 
@@ -90,38 +81,37 @@ sudo cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     if echo "$line" | grep -iq "user control pressed|0x44|user-rc-button|rc code pressed"; then
         log "🎛️ TELECOMMANDE détectée ! (possible volume/mute/power)"
         
-        # Volume Up (volume-up or 0x41)
-        if echo "$line" | grep -iq "volume-up|0x41"; then
-            log "🔊 VOLUME UP Panasonic!"
-            amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
-            notify_homebridge "volume" "up"
-            
-        # Volume Down (volume-down or 0x42)
-        elif echo "$line" | grep -iq "volume-down|0x42"; then
-            log "🔉 VOLUME DOWN Panasonic!"
-            amixer set Master 2%- >/dev/null 2>&1
-            notify_homebridge "volume" "down"
-            
-        # Mute (mute or 0x43)
-        elif echo "$line" | grep -iq "mute|0x43"; then
-            log "🔇 MUTE Panasonic!"
-            amixer set Master toggle >/dev/null 2>&1
-            notify_homebridge "mute" "toggle"
+    # Volume Up (volume-up or 0x41) - détecter sur la ligne suivante
+    elif echo "$line" | grep -iq "ui-cmd: volume-up|volume-up|0x41"; then
+        log "🔊 VOLUME UP Panasonic!"
+        amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
+        notify_homebridge "volume" "up"
         
-        # Power-related User Control (expand if your remote sends these for power)
-        elif echo "$line" | grep -iq "power-on|0x6B|power|0x40|power-toggle|0x6D"; then
-            log "🔋 POWER ON/Toggle Panasonic! (via user control)"
-            notify_homebridge "power" "on"
-        elif echo "$line" | grep -iq "power-off|0x6C"; then
-            log "🛑 POWER OFF Panasonic! (via user control)"
-            notify_homebridge "power" "standby"
-        fi
+    # Volume Down (volume-down or 0x42)
+    elif echo "$line" | grep -iq "ui-cmd: volume-down|volume-down|0x42"; then
+        log "🔉 VOLUME DOWN Panasonic!"
+        amixer set Master 2%- >/dev/null 2>&1
+        notify_homebridge "volume" "down"
         
-        # Log current volume after volume/mute change
-        if echo "$line" | grep -iq "volume|mute|0x41|0x42|0x43"; then
-            VOLUME=$(amixer get Master | grep -o '[0-9]\+%' | head -1 | sed 's/%//')
-            log "📶 Volume Panasonic: ${VOLUME}%"
-        fi
+    # Mute (mute or 0x43)
+    elif echo "$line" | grep -iq "ui-cmd: mute|mute|0x43"; then
+        log "🔇 MUTE Panasonic!"
+        amixer set Master toggle >/dev/null 2>&1
+        notify_homebridge "mute" "toggle"
+    
+    # Power-related User Control (expand if your remote sends these for power)
+    elif echo "$line" | grep -iq "ui-cmd: power-on|power-on|0x6B|power|0x40|power-toggle|0x6D"; then
+        log "🔋 POWER ON/Toggle Panasonic! (via user control)"
+        notify_homebridge "power" "on"
+    elif echo "$line" | grep -iq "ui-cmd: power-off|power-off|0x6C"; then
+        log "🛑 POWER OFF Panasonic! (via user control)"
+        notify_homebridge "power" "standby"
+    fi
+    
+    # Log current volume after volume/mute change
+    if echo "$line" | grep -iq "volume|mute|0x41|0x42|0x43"; then
+        VOLUME=$(amixer get Master | grep -o '[0-9]\+%' | head -1 | sed 's/%//')
+        log "📶 Volume Panasonic: ${VOLUME}%"
     fi
     
     # Power On (via System Audio Mode Request 0x70 as trigger)
