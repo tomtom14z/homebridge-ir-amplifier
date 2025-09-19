@@ -14,7 +14,7 @@ notify_homebridge() {
     local value="$2"
     
     # Attendre un peu si le fichier existe déjà (éviter les conflits)
-    while [ -f "/tmp/cec-to-homebridge.json" ] && [ -s "/tmp/cec-to-homebridge.json" ]; do
+    while [ -f "/var/lib/homebridge/cec-to-homebridge.json" ] && [ -s "/var/lib/homebridge/cec-to-homebridge.json" ]; do
         log "⏳ Waiting for Homebridge to process previous command..."
         sleep 0.1
     done
