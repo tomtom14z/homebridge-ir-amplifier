@@ -60,6 +60,11 @@
                 "title": "Volume Down Command",
                 "type": "string",
                 "description": "Hex IR command for volume down"
+              },
+              "mute": {
+                "title": "Mute Command",
+                "type": "string",
+                "description": "Hex IR command for mute (optional, will use volumeDown if not provided)"
               }
             },
             "required": ["power", "source", "volumeUp", "volumeDown"]

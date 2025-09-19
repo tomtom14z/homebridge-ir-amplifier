@@ -566,32 +566,47 @@ export class IRAmplifierAccessory {
 
   private async handleCECVolumeUp() {
     this.log.info('CEC: Volume UP requested - sending IR volume up command');
-    await this.broadlinkController.sendCommand('volumeUp');
+    const success = await this.broadlinkController.volumeUp();
     
-    // Mettre à jour le volume local
-    this.currentVolume = Math.min(100, this.currentVolume + 1);
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    if (success) {
+      // Mettre à jour le volume local seulement si la commande IR a réussi
+      this.currentVolume = Math.min(100, this.currentVolume + 1);
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Volume UP command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send volume UP command');
+    }
   }
 
   private async handleCECVolumeDown() {
     this.log.info('CEC: Volume DOWN requested - sending IR volume down command');
-    await this.broadlinkController.sendCommand('volumeDown');
+    const success = await this.broadlinkController.volumeDown();
     
-    // Mettre à jour le volume local
-    this.currentVolume = Math.max(0, this.currentVolume - 1);
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    if (success) {
+      // Mettre à jour le volume local seulement si la commande IR a réussi
+      this.currentVolume = Math.max(0, this.currentVolume - 1);
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send volume DOWN command');
+    }
   }
 
   private async handleCECMuteToggle() {
     this.log.info('CEC: Mute toggle requested - sending IR mute command');
-    await this.broadlinkController.sendCommand('mute');
+    const success = await this.broadlinkController.mute();
     
-    // Basculer l'état mute
-    this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
-    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    if (success) {
+      // Basculer l'état mute
+      this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
+      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+      this.log.info('CEC: Mute command sent successfully, volume now:', this.currentVolume);
+    } else {
+      this.log.error('CEC: Failed to send mute command');
+    }
   }
 
   private cleanup() {

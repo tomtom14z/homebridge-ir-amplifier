@@ -13,6 +13,7 @@ export interface IRAmplifierConfig {
       source: string;
       volumeUp: string;
       volumeDown: string;
+      mute?: string;
     };
   };
   tplink: {
@@ -119,6 +120,16 @@ export class BroadlinkController {
 
   async volumeDown(): Promise<boolean> {
     return this.sendCommand(this.config.broadlink.commands.volumeDown);
+  }
+
+  async mute(): Promise<boolean> {
+    // Si une commande mute est configurée, l'utiliser, sinon utiliser volumeDown pour simuler
+    if (this.config.broadlink.commands.mute) {
+      return this.sendCommand(this.config.broadlink.commands.mute);
+    } else {
+      this.log.warn('No mute command configured, using volumeDown as fallback');
+      return this.sendCommand(this.config.broadlink.commands.volumeDown);
+    }
   }
 
   // Method to learn new IR commands
