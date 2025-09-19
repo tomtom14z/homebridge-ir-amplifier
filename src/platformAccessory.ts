@@ -534,21 +534,53 @@ export class IRAmplifierAccessory {
   private externalCECWatcher: NodeJS.Timeout | null = null;
 
   private async handleCECPowerOn() {
-    this.log.info('CEC: Apple TV requested amplifier ON - updating HomeKit state to trigger IR command');
+    this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
     
-    // Mettre à jour l'état HomeKit (cela déclenchera setPowerState qui enverra la commande IR)
-    this.isOn = true;
-    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-    this.log.info('CEC: HomeKit power state updated to ON - this will trigger IR command via setPowerState callback');
+    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
+    const success = await this.broadlinkController.powerOn();
+    
+    if (success) {
+      this.log.info('CEC: Power ON command sent successfully');
+      
+      // Attendre un peu pour que la commande IR prenne effet
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Vérifier le nouvel état TP-Link
+      const newTpLinkState = await this.tplinkController.getInUseState();
+      this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
+      
+      // Mettre à jour l'état local et HomeKit
+      this.isOn = newTpLinkState;
+      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+    } else {
+      this.log.error('CEC: Failed to send power ON command');
+    }
   }
 
   private async handleCECPowerOff() {
-    this.log.info('CEC: Apple TV requested amplifier OFF - updating HomeKit state to trigger IR command');
+    this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
     
-    // Mettre à jour l'état HomeKit (cela déclenchera setPowerState qui enverra la commande IR)
-    this.isOn = false;
-    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-    this.log.info('CEC: HomeKit power state updated to OFF - this will trigger IR command via setPowerState callback');
+    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
+    const success = await this.broadlinkController.powerOff();
+    
+    if (success) {
+      this.log.info('CEC: Power OFF command sent successfully');
+      
+      // Attendre un peu pour que la commande IR prenne effet
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Vérifier le nouvel état TP-Link
+      const newTpLinkState = await this.tplinkController.getInUseState();
+      this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
+      
+      // Mettre à jour l'état local et HomeKit
+      this.isOn = newTpLinkState;
+      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+    } else {
+      this.log.error('CEC: Failed to send power OFF command');
+    }
   }
 
   private async handleCECVolumeUp() {
