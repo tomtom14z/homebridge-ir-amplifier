@@ -1,25 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Script postinstall pour homebridge-ir-amplifier
- * Installe automatiquement le service CEC Panasonic Ampli
+ * Script de mise à jour du service CEC Panasonic Ampli
+ * À exécuter manuellement après une mise à jour du plugin
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-console.log('🎛️  homebridge-ir-amplifier: Vérification du service CEC Panasonic Ampli...');
-
-// Vérifier si le service est déjà installé
-try {
-    execSync('systemctl is-active cec-panasonic-ampli.service', { stdio: 'ignore' });
-    console.log('✅ Service CEC Panasonic Ampli déjà installé et actif');
-    process.exit(0);
-} catch (error) {
-    // Service non installé ou inactif, continuer l'installation
-    console.log('🔧 Service CEC non trouvé, installation en cours...');
-}
+console.log('🔄 homebridge-ir-amplifier: Mise à jour du service CEC Panasonic Ampli...');
 
 // Vérifier si nous sommes sur un système Linux
 if (process.platform !== 'linux') {
@@ -38,6 +28,14 @@ if (!isRoot && !hasSudo) {
 }
 
 try {
+    // Arrêter le service existant s'il existe
+    try {
+        console.log('🛑 Arrêt du service CEC existant...');
+        execSync('systemctl stop cec-panasonic-ampli.service', { stdio: 'ignore' });
+    } catch (error) {
+        console.log('ℹ️  Aucun service CEC existant à arrêter');
+    }
+
     // Vérifier que cec-utils est installé
     try {
         execSync('which cec-ctl', { stdio: 'ignore' });
@@ -70,10 +68,10 @@ try {
             `"${installScript}"` : 
             `sudo "${installScript}"`;
         
-        console.log('🔧 Installation du service CEC Panasonic Ampli...');
+        console.log('🔧 Installation/mise à jour du service CEC Panasonic Ampli...');
         execSync(command, { stdio: 'inherit', cwd: pluginDir });
         
-        console.log('✅ Service CEC Panasonic Ampli installé avec succès!');
+        console.log('✅ Service CEC Panasonic Ampli mis à jour avec succès!');
         console.log('🎛️  Le plugin peut maintenant recevoir les commandes CEC de l\'Apple TV');
         console.log('');
         console.log('📋 Commandes utiles:');
@@ -86,8 +84,8 @@ try {
     }
 
 } catch (error) {
-    console.log('❌ Erreur lors de l\'installation du service CEC:', error.message);
+    console.log('❌ Erreur lors de la mise à jour du service CEC:', error.message);
     console.log('   Installation manuelle: sudo ./scripts/install-cec-panasonic.sh');
 }
 
-console.log('🎉 Installation de homebridge-ir-amplifier terminée!');
+console.log('🎉 Mise à jour du service CEC terminée!');
