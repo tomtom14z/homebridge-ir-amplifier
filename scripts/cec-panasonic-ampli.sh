@@ -19,7 +19,11 @@ notify_homebridge() {
         sleep 0.1
     done
     
-    echo "{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}" > /tmp/cec-to-homebridge.json
+    # Créer le JSON de manière atomique pour éviter la corruption
+    local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
+    echo "$json_data" > /tmp/cec-to-homebridge.json.tmp
+    mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
+    
     # Définir les permissions pour que Homebridge puisse lire et modifier le fichier
     chmod 666 /tmp/cec-to-homebridge.json
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"

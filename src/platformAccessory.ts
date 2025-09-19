@@ -452,8 +452,28 @@ export class IRAmplifierAccessory {
     const watcher = setInterval(() => {
       try {
         if (fs.existsSync(path)) {
-          const data = fs.readFileSync(path, 'utf8');
-          const command = JSON.parse(data);
+          const data = fs.readFileSync(path, 'utf8').trim();
+          
+          // Vérifier que le fichier n'est pas vide
+          if (!data) {
+            return; // Fichier vide, ignorer
+          }
+          
+          // Vérifier que c'est du JSON valide
+          let command;
+          try {
+            command = JSON.parse(data);
+          } catch (jsonError: any) {
+            this.log.warn('CEC: Invalid JSON in communication file:', jsonError.message);
+            this.log.debug('CEC: Raw data:', data);
+            return; // JSON invalide, ignorer
+          }
+          
+          // Vérifier que la commande a la structure attendue
+          if (!command.action || !command.value) {
+            this.log.warn('CEC: Invalid command structure:', command);
+            return; // Structure invalide, ignorer
+          }
           
           this.log.info('CEC: Command received from external CEC service:', command);
           
