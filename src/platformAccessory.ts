@@ -3,7 +3,7 @@ import { IRAmplifierPlatform } from './index';
 import { BroadlinkController } from './broadlinkController';
 import { TPLinkController } from './tplinkController';
 import { OCRController, OCRResult } from './ocrController';
-import { CECController } from './cecController';
+// import { CECController } from './cecController'; // Désactivé - utilise le service CEC externe
 
 export class IRAmplifierAccessory {
   private service: Service;
@@ -28,7 +28,7 @@ export class IRAmplifierAccessory {
     private readonly broadlinkController: BroadlinkController,
     private readonly tplinkController: TPLinkController,
     private readonly ocrController: OCRController,
-    private readonly cecController: CECController,
+    private readonly cecController: any, // null - utilise le service CEC externe
   ) {
     this.log = platform.log;
     this.api = platform.api;
@@ -223,8 +223,8 @@ export class IRAmplifierAccessory {
 
     await this.syncVolumeToTarget();
     
-    // Notifier CEC du nouveau volume
-    await this.cecController.setVolume(numValue);
+    // CEC géré par le service externe - pas d'action nécessaire
+    this.log.debug('Volume changed - CEC handled by external service');
   }
 
   private async getVolume(): Promise<number> {
@@ -415,110 +415,160 @@ export class IRAmplifierAccessory {
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
       this.log.info('HomeKit state updated to real TP-Link state:', this.isOn);
       
-      // Récupérer l'état actuel de CEC
-      const cecState = this.cecController.getIsOn();
-      this.log.info('Initial CEC state:', cecState);
+      // CEC géré par le service externe
+      this.log.info('CEC handled by external service - no internal CEC state');
       
       // Délai avant la synchronisation initiale CEC
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Synchroniser CEC avec TP-Link (source de vérité)
-      if (tpLinkState !== cecState) {
-        this.log.info('Synchronizing local CEC state with TP-Link state:', tpLinkState);
-        // CEC synchronisé localement
-      }
+      // CEC géré par le service externe - pas de synchronisation interne nécessaire
+      this.log.info('CEC handled by external service - no internal synchronization needed');
       
       // Récupérer le volume initial
       await this.getVolume();
       
-      this.log.info('State synchronization completed - Accessory:', this.isOn, 'TP-Link:', tpLinkState, 'CEC:', cecState);
+      this.log.info('State synchronization completed - Accessory:', this.isOn, 'TP-Link:', tpLinkState, 'CEC: external service');
     } catch (error) {
       this.log.error('Error during state synchronization:', error);
     }
   }
 
   private initializeCECCallbacks() {
-    // Callback pour les changements d'état d'alimentation via CEC
-    this.cecController.onPowerStateChangeCallback(async (isOn: boolean) => {
-      this.log.info('CEC: Power state change received from Apple TV:', isOn);
-      this.log.debug('CEC: Current amplifier state (TP-Link):', this.isOn, 'New CEC state:', isOn);
-      
-      // Vérifier l'état actuel de TP-Link
-      const currentTpLinkState = await this.tplinkController.getInUseState();
-      this.log.info('CEC: Current TP-Link state:', currentTpLinkState, 'CEC requested state:', isOn);
-      
-      if (isOn !== currentTpLinkState) {
-        this.log.info('CEC: Synchronizing amplifier state - TP-Link:', currentTpLinkState, '→ CEC:', isOn);
-        
-        // Envoyer la commande IR pour synchroniser l'amplificateur
-        if (isOn) {
-          this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
-          await this.broadlinkController.powerOn();
-        } else {
-          this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
-          await this.broadlinkController.powerOff();
-        }
-        
-        // Attendre un peu pour que la commande IR prenne effet
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Vérifier le nouvel état TP-Link
-        const newTpLinkState = await this.tplinkController.getInUseState();
-        this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
-        
-        // Mettre à jour l'état local et HomeKit
-        this.isOn = newTpLinkState;
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
-        
-        // Délai avant de notifier CEC pour éviter les boucles de synchronisation
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // CEC est maintenant synchronisé localement
-        this.log.info('CEC: Amplifier state synchronized locally:', this.isOn);
-      } else {
-        this.log.debug('CEC: Amplifier state already synchronized, no action needed');
-      }
-    });
-
-    // Callback pour les changements de volume via CEC
-    this.cecController.onVolumeChangeCallback((volume: number) => {
-      this.log.info('CEC: Volume change received from Apple TV:', volume);
-      this.log.debug('CEC: Current volume:', this.currentVolume, 'New volume:', volume);
-      
-      if (Math.abs(volume - this.currentVolume) > 2) { // Seuil pour éviter les micro-ajustements
-        this.currentVolume = volume;
-        this.targetVolume = volume;
-        
-        this.log.info('CEC: Updating HomeKit volume to:', this.currentVolume);
-        
-        // Mettre à jour les services HomeKit
-        this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-        this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-        
-        // Synchroniser le volume via IR
-        this.log.info('CEC: Syncing volume to amplifier via IR commands');
-        this.syncVolumeToTarget();
-      } else {
-        this.log.debug('CEC: Volume change too small, ignoring');
-      }
-    });
-
-    // Callback pour les changements de mute via CEC
-    this.cecController.onMuteChangeCallback((isMuted: boolean) => {
-      this.log.info('CEC: Mute state change received from Apple TV:', isMuted);
-      this.log.debug('CEC: Current mute state:', this.currentVolume === 0, 'New mute state:', isMuted);
-      
-      // Ici on pourrait ajouter une logique de mute si l'amplificateur le supporte
-      // Pour l'instant, on peut simuler le mute en mettant le volume à 0
-      if (isMuted) {
-        this.log.info('CEC: Apple TV requested mute - setting volume to 0');
-        this.setVolume(0);
-      } else {
-        this.log.info('CEC: Apple TV requested unmute - restoring previous volume');
-        // Restaurer le volume précédent (vous pourriez stocker le volume avant mute)
-        this.setVolume(50); // Volume par défaut
-      }
-    });
+    // CEC géré par le service externe - pas de callbacks internes
+    this.log.info('CEC callbacks handled by external service');
+    
+    // Démarrer le watcher pour le service CEC externe
+    this.startExternalCECWatcher();
   }
+
+  private startExternalCECWatcher() {
+    // Surveiller le fichier de communication avec le service CEC externe
+    const fs = require('fs');
+    const path = '/tmp/cec-to-homebridge.json';
+    
+    this.log.info('Starting external CEC service watcher...');
+    
+    const watcher = setInterval(() => {
+      try {
+        if (fs.existsSync(path)) {
+          const data = fs.readFileSync(path, 'utf8');
+          const command = JSON.parse(data);
+          
+          this.log.info('CEC: Command received from external CEC service:', command);
+          
+          switch (command.action) {
+            case 'power':
+              if (command.value === 'on') {
+                this.log.info('CEC: Power ON from external service');
+                this.handleCECPowerOn();
+              } else if (command.value === 'off') {
+                this.log.info('CEC: Power OFF from external service');
+                this.handleCECPowerOff();
+              }
+              break;
+              
+            case 'volume':
+              if (command.value === 'up') {
+                this.log.info('CEC: Volume UP from external service');
+                this.handleCECVolumeUp();
+              } else if (command.value === 'down') {
+                this.log.info('CEC: Volume DOWN from external service');
+                this.handleCECVolumeDown();
+              }
+              break;
+              
+            case 'mute':
+              this.log.info('CEC: Mute toggle from external service');
+              this.handleCECMuteToggle();
+              break;
+          }
+          
+          // Supprimer le fichier après traitement
+          fs.unlinkSync(path);
+        }
+      } catch (error) {
+        this.log.error('CEC: Error reading external CEC service file:', error);
+      }
+    }, 100); // Vérifier toutes les 100ms
+    
+    // Stocker le watcher pour le nettoyage
+    this.externalCECWatcher = watcher;
+  }
+
+  private externalCECWatcher: NodeJS.Timeout | null = null;
+
+  private async handleCECPowerOn() {
+    this.log.info('CEC: Apple TV requested amplifier ON - sending IR power command to turn ON');
+    await this.broadlinkController.powerOn();
+    
+    // Attendre un peu pour que la commande IR prenne effet
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Vérifier le nouvel état TP-Link
+    const newTpLinkState = await this.tplinkController.getInUseState();
+    this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
+    
+    // Mettre à jour l'état local et HomeKit
+    this.isOn = newTpLinkState;
+    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+    this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+  }
+
+  private async handleCECPowerOff() {
+    this.log.info('CEC: Apple TV requested amplifier OFF - sending IR power command to turn OFF');
+    await this.broadlinkController.powerOff();
+    
+    // Attendre un peu pour que la commande IR prenne effet
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Vérifier le nouvel état TP-Link
+    const newTpLinkState = await this.tplinkController.getInUseState();
+    this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
+    
+    // Mettre à jour l'état local et HomeKit
+    this.isOn = newTpLinkState;
+    this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+    this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+  }
+
+  private async handleCECVolumeUp() {
+    this.log.info('CEC: Volume UP requested - sending IR volume up command');
+    await this.broadlinkController.sendCommand('volumeUp');
+    
+    // Mettre à jour le volume local
+    this.currentVolume = Math.min(100, this.currentVolume + 1);
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+  }
+
+  private async handleCECVolumeDown() {
+    this.log.info('CEC: Volume DOWN requested - sending IR volume down command');
+    await this.broadlinkController.sendCommand('volumeDown');
+    
+    // Mettre à jour le volume local
+    this.currentVolume = Math.max(0, this.currentVolume - 1);
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+  }
+
+  private async handleCECMuteToggle() {
+    this.log.info('CEC: Mute toggle requested - sending IR mute command');
+    await this.broadlinkController.sendCommand('mute');
+    
+    // Basculer l'état mute
+    this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+  }
+
+  private cleanup() {
+    // Nettoyer le watcher CEC externe
+    if (this.externalCECWatcher) {
+      clearInterval(this.externalCECWatcher);
+      this.externalCECWatcher = null;
+      this.log.info('CEC: Stopped external CEC service watcher');
+    }
+  }
+
+  // Anciens callbacks CEC supprimés - maintenant gérés par le service externe
 }

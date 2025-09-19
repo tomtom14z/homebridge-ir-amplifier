@@ -4,7 +4,7 @@ import { IRAmplifierAccessory } from './platformAccessory';
 import { BroadlinkController } from './broadlinkController';
 import { TPLinkController } from './tplinkController';
 import { OCRController } from './ocrController';
-import { CECController } from './cecController';
+// import { CECController } from './cecController'; // Désactivé - utilise le service CEC externe
 
 export class IRAmplifierPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -14,7 +14,7 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
   private broadlinkController: BroadlinkController;
   private tplinkController: TPLinkController;
   private ocrController: OCRController;
-  private cecController: CECController;
+  // private cecController: CECController; // Désactivé - utilise le service CEC externe
 
   constructor(
     public readonly log: Logger,
@@ -27,7 +27,7 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
     this.broadlinkController = new BroadlinkController(this.log, this.config as any);
     this.tplinkController = new TPLinkController(this.log, this.config as any);
     this.ocrController = new OCRController(this.log, this.config as any);
-    this.cecController = new CECController(this.log, (this.config as any).cec);
+    // this.cecController = new CECController(this.log, (this.config as any).cec); // Désactivé - utilise le service CEC externe
 
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
@@ -47,7 +47,7 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
 
     if (existingAccessory) {
       this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-      new IRAmplifierAccessory(this, existingAccessory, this.broadlinkController, this.tplinkController, this.ocrController, this.cecController);
+      new IRAmplifierAccessory(this, existingAccessory, this.broadlinkController, this.tplinkController, this.ocrController, null);
     } else {
       this.log.info('Adding new accessory: IR Amplifier');
       const accessory = new this.api.platformAccessory('IR Amplifier', uuid);
@@ -57,7 +57,7 @@ export class IRAmplifierPlatform implements DynamicPlatformPlugin {
         serialNumber: 'IR-AMP-001',
       };
 
-      new IRAmplifierAccessory(this, accessory, this.broadlinkController, this.tplinkController, this.ocrController, this.cecController);
+      new IRAmplifierAccessory(this, accessory, this.broadlinkController, this.tplinkController, this.ocrController, null);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     }
   }
