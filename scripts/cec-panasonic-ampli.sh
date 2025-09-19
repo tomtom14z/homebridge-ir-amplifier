@@ -12,8 +12,15 @@ log() {
 notify_homebridge() {
     local action="$1"
     local value="$2"
+    
+    # Attendre un peu si le fichier existe déjà (éviter les conflits)
+    while [ -f "/tmp/cec-to-homebridge.json" ] && [ -s "/tmp/cec-to-homebridge.json" ]; do
+        log "⏳ Waiting for Homebridge to process previous command..."
+        sleep 0.1
+    done
+    
     echo "{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}" > /tmp/cec-to-homebridge.json
-    # Définir les permissions pour que Homebridge puisse lire et supprimer le fichier
+    # Définir les permissions pour que Homebridge puisse lire et modifier le fichier
     chmod 666 /tmp/cec-to-homebridge.json
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
 }

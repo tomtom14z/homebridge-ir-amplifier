@@ -484,18 +484,18 @@ export class IRAmplifierAccessory {
               break;
           }
           
-          // Supprimer le fichier après traitement
+          // Vider le fichier après traitement (plus fiable que la suppression)
           try {
-            fs.unlinkSync(path);
-          } catch (unlinkError: any) {
-            this.log.warn('CEC: Could not delete communication file (permissions issue):', unlinkError.message);
-            // Essayer de changer les permissions et supprimer
+            fs.writeFileSync(path, '');
+            this.log.debug('CEC: Communication file cleared');
+          } catch (clearError: any) {
+            this.log.warn('CEC: Could not clear communication file:', clearError.message);
+            // Essayer de supprimer en dernier recours
             try {
-              fs.chmodSync(path, 0o666);
               fs.unlinkSync(path);
-              this.log.info('CEC: File deleted after permission fix');
-            } catch (retryError: any) {
-              this.log.error('CEC: Still cannot delete file:', retryError.message);
+              this.log.debug('CEC: Communication file deleted');
+            } catch (unlinkError: any) {
+              this.log.warn('CEC: Could not delete communication file (will be overwritten on next command):', unlinkError.message);
             }
           }
         }
