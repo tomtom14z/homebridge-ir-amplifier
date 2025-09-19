@@ -583,13 +583,33 @@ export class IRAmplifierAccessory {
 
   private syncCECState(powerState: boolean) {
     // Synchroniser l'état CEC avec l'état HomeKit
-    // Le script CEC gère déjà l'état CEC, on communique juste l'état pour information
-    this.log.info('CEC: Amplifier state changed to:', powerState ? 'ON' : 'OFF');
-    this.log.info('CEC: External CEC service will handle state synchronization automatically');
-    
-    // Note: Le script cec-panasonic-ampli.sh gère déjà l'état CEC
-    // Il n'est pas nécessaire d'envoyer des commandes CEC depuis Homebridge
-    // car cela pourrait créer des conflits avec le service CEC externe
+    // Écrire l'état dans un fichier que le script CEC peut lire
+    try {
+      const fs = require('fs');
+      const path = '/var/lib/homebridge/homebridge-to-cec.json';
+      
+      const stateData = {
+        power: powerState ? 'on' : 'off',
+        timestamp: Date.now(),
+        source: 'homebridge'
+      };
+      
+      // Écrire de manière atomique pour éviter la corruption
+      const tempPath = path + '.tmp';
+      fs.writeFileSync(tempPath, JSON.stringify(stateData, null, 2));
+      
+      // Définir les permissions pour que le script CEC (root) puisse lire
+      fs.chmodSync(tempPath, 0o644); // rw-r--r--
+      
+      // Déplacer le fichier de manière atomique
+      fs.renameSync(tempPath, path);
+      
+      this.log.info('CEC: Amplifier state written to CEC communication file:', powerState ? 'ON' : 'OFF');
+      this.log.debug('CEC: State data:', stateData);
+      
+    } catch (error) {
+      this.log.error('CEC: Error writing state to CEC communication file:', error);
+    }
   }
 
   private cleanup() {

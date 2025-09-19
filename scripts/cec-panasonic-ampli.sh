@@ -31,6 +31,30 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
+# Fonction pour lire l'état de Homebridge et synchroniser l'état CEC
+sync_cec_state_from_homebridge() {
+    local state_file="/var/lib/homebridge/homebridge-to-cec.json"
+    
+    if [ -f "$state_file" ]; then
+        # Lire l'état de Homebridge
+        local power_state=$(jq -r '.power' "$state_file" 2>/dev/null)
+        local timestamp=$(jq -r '.timestamp' "$state_file" 2>/dev/null)
+        
+        if [ "$power_state" = "on" ] || [ "$power_state" = "off" ]; then
+            log "📡 Homebridge state: $power_state (timestamp: $timestamp)"
+            
+            # Mettre à jour l'état CEC en conséquence
+            if [ "$power_state" = "on" ]; then
+                log "🔋 Syncing CEC state to ON"
+                cec-ctl -d /dev/cec0 --audio --power-on >/dev/null 2>&1
+            else
+                log "🛑 Syncing CEC state to STANDBY"
+                cec-ctl -d /dev/cec0 --audio --standby >/dev/null 2>&1
+            fi
+        fi
+    fi
+}
+
 log "🎛️ CEC Panasonic Ampli - using cec-follower"
 
 # Vérifier que cec-ctl et cec-follower sont disponibles
@@ -69,7 +93,17 @@ cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
 log "📊 Verification..."
 cec-ctl -d /dev/cec0 -S 2>&1 | tee -a "$LOG_FILE"
 
-# 4. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
+# 4. Démarrer la synchronisation périodique de l'état CEC avec Homebridge
+log "🔄 Starting periodic CEC state synchronization with Homebridge..."
+(
+    while true; do
+        sleep 10  # Vérifier toutes les 10 secondes
+        sync_cec_state_from_homebridge
+    done
+) &
+SYNC_PID=$!
+
+# 5. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
 log "📡 Starting cec-follower monitoring (with verbose, wall-clock timestamps, show-msgs, show-state) - Ctrl+C to stop"
 log "🎛️ Select 'Home Cinema' in VIERA Link and test volume/power!"
 
@@ -132,5 +166,9 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "power" "standby"
     fi
 done
+
+# Nettoyer le processus de synchronisation
+log "🔄 Stopping CEC state synchronization..."
+kill $SYNC_PID 2>/dev/null
 
 log "CEC Panasonic Ampli service stopped"
