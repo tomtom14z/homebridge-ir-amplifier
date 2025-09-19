@@ -88,23 +88,27 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         log "🔊 VOLUME UP Panasonic!"
         amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
         notify_homebridge "volume" "up"
+    fi
         
     # Volume Down (volume-down or 0x42)
     if echo "$line" | grep -iq "ui-cmd: volume-down"; then
         log "🔉 VOLUME DOWN Panasonic!"
         amixer set Master 2%- >/dev/null 2>&1
         notify_homebridge "volume" "down"
+    fi
         
     # Mute (mute or 0x43)
     if echo "$line" | grep -iq "ui-cmd: mute"; then
         log "🔇 MUTE Panasonic!"
         amixer set Master toggle >/dev/null 2>&1
         notify_homebridge "mute" "toggle"
+    fi
     
     # Power-related User Control (expand if your remote sends these for power)
     if echo "$line" | grep -iq "ui-cmd: power-on"; then
         log "🔋 POWER ON/Toggle Panasonic! (via user control)"
         notify_homebridge "power" "on"
+    fi
     if echo "$line" | grep -iq "ui-cmd: power-off"; then
         log "🛑 POWER OFF Panasonic! (via user control)"
         notify_homebridge "power" "standby"
