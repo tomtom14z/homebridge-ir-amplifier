@@ -485,8 +485,8 @@ export class IRAmplifierAccessory {
               if (command.value === 'on') {
                 this.log.info('CEC: Power ON from external service');
                 this.handleCECPowerOn();
-              } else if (command.value === 'off') {
-                this.log.info('CEC: Power OFF from external service');
+              } else if (command.value === 'off' || command.value === 'standby') {
+                this.log.info('CEC: Power OFF/STANDBY from external service');
                 this.handleCECPowerOff();
               }
               break;
