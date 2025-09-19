@@ -22,10 +22,20 @@ notify_homebridge() {
     # Créer le JSON de manière atomique pour éviter la corruption
     local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
     echo "$json_data" > /tmp/cec-to-homebridge.json.tmp
-    mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
+    
+    # Définir le propriétaire et les permissions pour Homebridge
+    # Essayer différents utilisateurs Homebridge possibles
+    for user in homebridge pi homebridge-user; do
+        if id "$user" &>/dev/null; then
+            chown "$user:$user" /tmp/cec-to-homebridge.json.tmp
+            log "📱 Set file owner to: $user"
+            break
+        fi
+    done
     
     # Définir les permissions pour que Homebridge puisse lire et modifier le fichier
-    chmod 666 /tmp/cec-to-homebridge.json
+    chmod 666 /tmp/cec-to-homebridge.json.tmp
+    mv /tmp/cec-to-homebridge.json.tmp /tmp/cec-to-homebridge.json
     log "📱 Notified Homebridge: $action=$value (via /tmp/cec-to-homebridge.json)"
 }
 
