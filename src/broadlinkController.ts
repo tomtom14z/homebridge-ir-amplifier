@@ -205,9 +205,9 @@ export class BroadlinkController {
       this.log.info('Volume set to minimum, waiting 1 second before setting startup volume...');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Step 2: Send volume up commands to reach startup volume
-      const volumeUpSteps = Math.round((startupVolume / 100) * maxVolumeSteps);
-      this.log.info(`Sending ${volumeUpSteps} volume up commands to reach startup volume ${startupVolume}%...`);
+      // Step 2: Send volume up commands to reach startup volume (absolute value)
+      const volumeUpSteps = Math.min(startupVolume, maxVolumeSteps); // Utiliser la valeur absolue, limitée au max
+      this.log.info(`Sending ${volumeUpSteps} volume up commands to reach startup volume ${startupVolume}...`);
       
       for (let i = 0; i < volumeUpSteps; i++) {
         const success = await this.sendCommand(this.config.broadlink.commands.volumeUp);
@@ -222,7 +222,7 @@ export class BroadlinkController {
         }
       }
 
-      this.log.info(`Volume initialization completed successfully - volume set to ${startupVolume}%`);
+      this.log.info(`Volume initialization completed successfully - volume set to ${startupVolume}`);
       return true;
 
     } catch (error) {

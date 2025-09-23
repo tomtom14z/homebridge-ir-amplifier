@@ -17,7 +17,7 @@
       "volumeInit": {
         "enabled": true,
         "maxVolumeSteps": 50,
-        "startupVolume": 20,
+        "startupVolume": 7,
         "delayBetweenSteps": 200
       },
       "tplink": {
