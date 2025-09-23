@@ -10,8 +10,15 @@
           "power": "2600500000012a...",
           "source": "2600500000012b...",
           "volumeUp": "2600500000012c...",
-          "volumeDown": "2600500000012d..."
+          "volumeDown": "2600500000012d...",
+          "mute": "2600500000012e..."
         }
+      },
+      "volumeInit": {
+        "enabled": true,
+        "maxVolumeSteps": 50,
+        "startupVolume": 20,
+        "delayBetweenSteps": 200
       },
       "tplink": {
         "host": "192.168.1.101"

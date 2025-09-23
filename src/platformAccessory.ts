@@ -117,6 +117,15 @@ export class IRAmplifierAccessory {
         this.syncCECState(boolValue);
         // Programmer une vérification différée de l'état TP-Link
         this.scheduleStateVerification(boolValue);
+        
+        // Si on allume l'amplificateur, initialiser le volume
+        if (boolValue) {
+          this.log.info('Amplifier power ON - starting volume initialization...');
+          // Attendre un peu que l'amplificateur s'allume avant d'initialiser le volume
+          setTimeout(() => {
+            this.initializeVolumeAfterPowerOn();
+          }, 3000); // 3 secondes après l'allumage
+        }
       } else {
         this.log.error('Failed to send IR command');
         // Remettre l'état précédent en cas d'échec
@@ -562,6 +571,12 @@ export class IRAmplifierAccessory {
       this.isOn = newTpLinkState;
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
       this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+      
+      // Initialiser le volume si l'amplificateur est maintenant allumé
+      if (this.isOn) {
+        this.log.info('CEC: Amplifier is now ON - starting volume initialization...');
+        await this.initializeVolumeAfterPowerOn();
+      }
     } else {
       this.log.error('CEC: Failed to send power ON command');
     }
@@ -680,6 +695,34 @@ export class IRAmplifierAccessory {
       
     } catch (error) {
       this.log.error('CEC: Error writing state to CEC communication file:', error);
+    }
+  }
+
+  /**
+   * Initialize volume after amplifier power on
+   * This ensures the virtual volume matches the physical amplifier volume
+   */
+  private async initializeVolumeAfterPowerOn() {
+    try {
+      this.log.info('Starting volume initialization after power on...');
+      
+      // Appeler la méthode d'initialisation du volume du BroadlinkController
+      const success = await this.broadlinkController.initializeVolume();
+      
+      if (success) {
+        this.log.info('Volume initialization completed successfully');
+        
+        // Mettre à jour le volume virtuel HomeKit avec le volume de démarrage configuré
+        const startupVolume = this.broadlinkController.getStartupVolume();
+        this.currentVolume = startupVolume;
+        this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
+        this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+        this.log.info(`HomeKit volume updated to startup volume: ${this.currentVolume}%`);
+      } else {
+        this.log.error('Volume initialization failed');
+      }
+    } catch (error) {
+      this.log.error('Error during volume initialization:', error);
     }
   }
 

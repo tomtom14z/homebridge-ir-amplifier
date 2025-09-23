@@ -16,6 +16,12 @@ export interface IRAmplifierConfig {
       mute?: string;
     };
   };
+  volumeInit?: {
+    enabled: boolean;
+    maxVolumeSteps: number;
+    startupVolume: number;
+    delayBetweenSteps: number;
+  };
   tplink: {
     host: string;
   };
@@ -163,5 +169,72 @@ export class BroadlinkController {
       this.log.error('Failed to learn IR command:', error);
       return null;
     }
+  }
+
+  /**
+   * Initialize volume to a known state
+   * 1. Send volume down commands to reach minimum volume
+   * 2. Send volume up commands to reach startup volume
+   */
+  async initializeVolume(): Promise<boolean> {
+    if (!this.config.volumeInit?.enabled) {
+      this.log.info('Volume initialization is disabled');
+      return true;
+    }
+
+    const { maxVolumeSteps, startupVolume, delayBetweenSteps } = this.config.volumeInit;
+    
+    this.log.info(`Volume initialization starting: maxSteps=${maxVolumeSteps}, startupVolume=${startupVolume}, delay=${delayBetweenSteps}ms`);
+
+    try {
+      // Step 1: Send volume down commands to reach minimum volume
+      this.log.info(`Sending ${maxVolumeSteps} volume down commands to reach minimum volume...`);
+      for (let i = 0; i < maxVolumeSteps; i++) {
+        const success = await this.sendCommand(this.config.broadlink.commands.volumeDown);
+        if (!success) {
+          this.log.error(`Failed to send volume down command ${i + 1}/${maxVolumeSteps}`);
+          return false;
+        }
+        
+        // Wait between commands
+        if (i < maxVolumeSteps - 1) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenSteps));
+        }
+      }
+
+      this.log.info('Volume set to minimum, waiting 1 second before setting startup volume...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Step 2: Send volume up commands to reach startup volume
+      const volumeUpSteps = Math.round((startupVolume / 100) * maxVolumeSteps);
+      this.log.info(`Sending ${volumeUpSteps} volume up commands to reach startup volume ${startupVolume}%...`);
+      
+      for (let i = 0; i < volumeUpSteps; i++) {
+        const success = await this.sendCommand(this.config.broadlink.commands.volumeUp);
+        if (!success) {
+          this.log.error(`Failed to send volume up command ${i + 1}/${volumeUpSteps}`);
+          return false;
+        }
+        
+        // Wait between commands
+        if (i < volumeUpSteps - 1) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenSteps));
+        }
+      }
+
+      this.log.info(`Volume initialization completed successfully - volume set to ${startupVolume}%`);
+      return true;
+
+    } catch (error) {
+      this.log.error('Volume initialization failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the configured startup volume
+   */
+  getStartupVolume(): number {
+    return this.config.volumeInit?.startupVolume || 20;
   }
 }
