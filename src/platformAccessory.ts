@@ -543,12 +543,6 @@ export class IRAmplifierAccessory {
   private externalCECWatcher: NodeJS.Timeout | null = null;
 
   private async handleCECPowerOn() {
-    // Vérifier si l'allumage automatique est désactivé
-    if (this.broadlinkController.isAutoPowerOnDisabled()) {
-      this.log.info('CEC: Auto power-on is DISABLED - skipping amplifier power-on to avoid AirPlay interruption');
-      return;
-    }
-    
     // Vérifier l'état actuel de l'amplificateur avant d'envoyer la commande
     const currentTpLinkState = await this.tplinkController.getInUseState();
     this.log.info('CEC: Apple TV requested amplifier ON - current TP-Link state:', currentTpLinkState);
@@ -810,54 +804,71 @@ export class IRAmplifierAccessory {
    * Send HDMI1 command via CEC to switch TV to HDMI1 input
    */
   private async sendCECHdmi1Command(): Promise<boolean> {
-      try {
-        this.log.info('Sending CEC HDMI1 command to switch TV to HDMI1...');
-        this.log.info('CEC command: cec-ctl -d /dev/cec0 --to 0 --active-source 1.0.0.0');
-        
-        // Utiliser cec-ctl pour envoyer la commande HDMI1
-        const { spawn } = require('child_process');
+    // Essayer différentes syntaxes de commande CEC
+    const cecCommands = [
+      // Syntaxe 1: Format hex
+      ['-d', '/dev/cec0', '--to', '0', '--active-source', '1000'],
+      // Syntaxe 2: Format décimal
+      ['-d', '/dev/cec0', '--to', '0', '--active-source', '4096'],
+      // Syntaxe 3: Format avec points
+      ['-d', '/dev/cec0', '--to', '0', '--active-source', '1.0.0.0'],
+      // Syntaxe 4: Sans --to
+      ['-d', '/dev/cec0', '--active-source', '1000'],
+      // Syntaxe 5: Commande directe
+      ['-d', '/dev/cec0', '--to', '0', 'tx', '4F:82:10:00']
+    ];
+
+    for (let i = 0; i < cecCommands.length; i++) {
+      const command = cecCommands[i];
+      this.log.info(`Trying CEC HDMI1 command ${i + 1}/${cecCommands.length}: cec-ctl ${command.join(' ')}`);
       
-      return new Promise((resolve) => {
-        // Commande CEC pour basculer sur HDMI1 (physical address 1.0.0.0)
-        const cecProcess = spawn('cec-ctl', [
-          '-d', '/dev/cec0',
-          '--to', '0',  // TV (device 0)
-          '--active-source', '1.0.0.0'  // Physical address HDMI1
-        ]);
+      const success = await this.tryCECCommand(command);
+      if (success) {
+        this.log.info(`CEC HDMI1 command ${i + 1} succeeded!`);
+        return true;
+      }
+    }
 
-        let output = '';
-        let errorOutput = '';
+    this.log.error('All CEC HDMI1 command attempts failed');
+    return false;
+  }
 
-        cecProcess.stdout.on('data', (data: Buffer) => {
-          output += data.toString();
-        });
+  /**
+   * Try a specific CEC command
+   */
+  private async tryCECCommand(command: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      const cecProcess = spawn('cec-ctl', command);
 
-        cecProcess.stderr.on('data', (data: Buffer) => {
-          errorOutput += data.toString();
-        });
+      let output = '';
+      let errorOutput = '';
 
-        cecProcess.on('close', (code: number) => {
-          if (code === 0) {
-            this.log.info('CEC HDMI1 command sent successfully');
-            this.log.debug('CEC HDMI1 output:', output);
-            resolve(true);
-          } else {
-            this.log.error('CEC HDMI1 command failed with code:', code);
-            this.log.error('CEC HDMI1 error:', errorOutput);
-            resolve(false);
-          }
-        });
-
-        cecProcess.on('error', (error: Error) => {
-          this.log.error('Failed to execute CEC HDMI1 command:', error);
-          resolve(false);
-        });
+      cecProcess.stdout.on('data', (data: Buffer) => {
+        output += data.toString();
       });
 
-    } catch (error) {
-      this.log.error('Error sending CEC HDMI1 command:', error);
-      return false;
-    }
+      cecProcess.stderr.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      cecProcess.on('close', (code: number) => {
+        if (code === 0) {
+          this.log.info('CEC command succeeded');
+          this.log.debug('CEC output:', output);
+          resolve(true);
+        } else {
+          this.log.warn(`CEC command failed with code: ${code}`);
+          this.log.debug('CEC error:', errorOutput);
+          resolve(false);
+        }
+      });
+
+      cecProcess.on('error', (error: Error) => {
+        this.log.warn('Failed to execute CEC command:', error);
+        resolve(false);
+      });
+    });
   }
 
   private cleanup() {
