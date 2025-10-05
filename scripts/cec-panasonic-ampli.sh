@@ -51,6 +51,34 @@ sync_cec_state_from_homebridge() {
                 log "🛑 Syncing CEC state to STANDBY"
                 cec-ctl -d /dev/cec0 --audio --standby >/dev/null 2>&1
             fi
+            
+            # Supprimer le fichier après traitement
+            rm -f "$state_file"
+        else
+            # Vérifier s'il y a une commande HDMI1
+            local action=$(jq -r '.action' "$state_file" 2>/dev/null)
+            if [ "$action" = "hdmi1" ]; then
+                log "📺 Homebridge requested HDMI1 switch (timestamp: $timestamp)"
+                
+                # Envoyer la commande HDMI1 via CEC
+                log "📺 Sending HDMI1 command to TV..."
+                cec-ctl -d /dev/cec0 --to 0 --active-source 1000 >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    log "✅ HDMI1 command sent successfully"
+                else
+                    log "❌ HDMI1 command failed, trying alternative syntax..."
+                    # Essayer d'autres syntaxes
+                    cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
+                    if [ $? -eq 0 ]; then
+                        log "✅ HDMI1 command sent successfully (alternative syntax)"
+                    else
+                        log "❌ All HDMI1 command attempts failed"
+                    fi
+                fi
+                
+                # Supprimer le fichier après traitement
+                rm -f "$state_file"
+            fi
         fi
     fi
 }

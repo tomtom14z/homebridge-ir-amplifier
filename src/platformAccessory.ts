@@ -804,33 +804,32 @@ export class IRAmplifierAccessory {
    * Send HDMI1 command via CEC to switch TV to HDMI1 input
    */
   private async sendCECHdmi1Command(): Promise<boolean> {
-    // Essayer différentes syntaxes de commande CEC
-    const cecCommands = [
-      // Syntaxe 1: Format hex
-      ['-d', '/dev/cec0', '--to', '0', '--active-source', '1000'],
-      // Syntaxe 2: Format décimal
-      ['-d', '/dev/cec0', '--to', '0', '--active-source', '4096'],
-      // Syntaxe 3: Format avec points
-      ['-d', '/dev/cec0', '--to', '0', '--active-source', '1.0.0.0'],
-      // Syntaxe 4: Sans --to
-      ['-d', '/dev/cec0', '--active-source', '1000'],
-      // Syntaxe 5: Commande directe
-      ['-d', '/dev/cec0', '--to', '0', 'tx', '4F:82:10:00']
-    ];
-
-    for (let i = 0; i < cecCommands.length; i++) {
-      const command = cecCommands[i];
-      this.log.info(`Trying CEC HDMI1 command ${i + 1}/${cecCommands.length}: cec-ctl ${command.join(' ')}`);
+    try {
+      this.log.info('Sending HDMI1 command via external CEC service...');
       
-      const success = await this.tryCECCommand(command);
-      if (success) {
-        this.log.info(`CEC HDMI1 command ${i + 1} succeeded!`);
-        return true;
-      }
+      // Utiliser le service CEC externe via le fichier de communication
+      const cecCommand = {
+        action: 'hdmi1',
+        timestamp: Math.floor(Date.now() / 1000)
+      };
+      
+      const fs = require('fs');
+      const path = '/var/lib/homebridge/homebridge-to-cec.json';
+      
+      // Écrire la commande HDMI1 dans le fichier de communication
+      fs.writeFileSync(path, JSON.stringify(cecCommand));
+      this.log.info('HDMI1 command written to CEC communication file');
+      
+      // Attendre un peu pour que le service CEC traite la commande
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      this.log.info('HDMI1 command sent via external CEC service');
+      return true;
+      
+    } catch (error) {
+      this.log.error('Error sending HDMI1 command via external CEC service:', error);
+      return false;
     }
-
-    this.log.error('All CEC HDMI1 command attempts failed');
-    return false;
   }
 
   /**
