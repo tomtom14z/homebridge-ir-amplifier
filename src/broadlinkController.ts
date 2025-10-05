@@ -26,6 +26,7 @@ export interface IRAmplifierConfig {
     autoHDMI1: boolean;
     tplinkPowerCheck: boolean;
     tplinkPowerOnDelay: number;
+    disableAutoPowerOn: boolean;
   };
   tplink: {
     host: string;
@@ -263,5 +264,12 @@ export class BroadlinkController {
    */
   getTPLinkPowerOnDelay(): number {
     return this.config.powerOnEnhancements?.tplinkPowerOnDelay || 3;
+  }
+
+  /**
+   * Check if auto power on is disabled
+   */
+  isAutoPowerOnDisabled(): boolean {
+    return this.config.powerOnEnhancements?.disableAutoPowerOn || false;
   }
 }

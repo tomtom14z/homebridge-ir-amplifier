@@ -543,23 +543,32 @@ export class IRAmplifierAccessory {
   private externalCECWatcher: NodeJS.Timeout | null = null;
 
   private async handleCECPowerOn() {
+    // Vérifier si l'allumage automatique est désactivé
+    if (this.broadlinkController.isAutoPowerOnDisabled()) {
+      this.log.info('CEC: Auto power-on is DISABLED - skipping amplifier power-on to avoid AirPlay interruption');
+      return;
+    }
+    
     // Vérifier l'état actuel de l'amplificateur avant d'envoyer la commande
     const currentTpLinkState = await this.tplinkController.getInUseState();
     this.log.info('CEC: Apple TV requested amplifier ON - current TP-Link state:', currentTpLinkState);
+    
+    // Délai pour laisser Apple TV se stabiliser avant d'allumer l'amplificateur
+    this.log.info('CEC: Waiting 2 seconds for Apple TV to stabilize before turning on amplifier...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     if (currentTpLinkState) {
       this.log.info('CEC: Amplifier is already ON - skipping IR command to avoid unnecessary power toggle');
       
       // Même si l'amplificateur est déjà allumé, envoyer la commande HDMI1 si activée
       if (this.broadlinkController.isAutoHDMI1Enabled()) {
-        this.log.info('CEC: Amplifier already ON - TEMPORARILY DISABLED HDMI1 command to test AirPlay pause issue');
-        // Temporairement désactivé pour tester si c'est la cause du problème AirPlay
-        // const hdmiSuccess = await this.sendCECHdmi1Command();
-        // if (hdmiSuccess) {
-        //   this.log.info('CEC: HDMI1 CEC command sent successfully');
-        // } else {
-        //   this.log.warn('CEC: HDMI1 CEC command failed');
-        // }
+        this.log.info('CEC: Amplifier already ON - sending HDMI1 command via CEC...');
+        const hdmiSuccess = await this.sendCECHdmi1Command();
+        if (hdmiSuccess) {
+          this.log.info('CEC: HDMI1 CEC command sent successfully');
+        } else {
+          this.log.warn('CEC: HDMI1 CEC command failed');
+        }
       }
       return;
     }
@@ -779,14 +788,13 @@ export class IRAmplifierAccessory {
         // 3. Envoyer la commande HDMI1 via CEC si activée
         if (this.broadlinkController.isAutoHDMI1Enabled()) {
           this.log.info('handlePowerOnWithEnhancements: Auto HDMI1 is ENABLED');
-          this.log.info('TEMPORARILY DISABLED: HDMI1 command to test AirPlay pause issue');
-          // Temporairement désactivé pour tester si c'est la cause du problème AirPlay
-          // const hdmiSuccess = await this.sendCECHdmi1Command();
-          // if (hdmiSuccess) {
-          //   this.log.info('HDMI1 CEC command sent successfully');
-          // } else {
-          //   this.log.warn('HDMI1 CEC command failed');
-          // }
+          this.log.info('Sending HDMI1 command via CEC to switch TV to HDMI1...');
+          const hdmiSuccess = await this.sendCECHdmi1Command();
+          if (hdmiSuccess) {
+            this.log.info('HDMI1 CEC command sent successfully');
+          } else {
+            this.log.warn('HDMI1 CEC command failed');
+          }
         } else {
           this.log.info('handlePowerOnWithEnhancements: Auto HDMI1 is DISABLED');
         }
