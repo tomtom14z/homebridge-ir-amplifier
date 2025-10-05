@@ -121,10 +121,10 @@ export class IRAmplifierAccessory {
         // Si on allume l'amplificateur, initialiser le volume
         if (boolValue) {
           this.log.info('Amplifier power ON - starting volume initialization...');
-          // Attendre un peu que l'amplificateur s'allume avant d'initialiser le volume
+          // Attendre plus longtemps pour éviter d'interrompre AirPlay
           setTimeout(() => {
             this.initializeVolumeAfterPowerOn();
-          }, 3000); // 3 secondes après l'allumage
+          }, 8000); // 8 secondes après l'allumage pour laisser AirPlay se stabiliser
         }
       } else {
         this.log.error('Failed to send IR command');
@@ -588,11 +588,12 @@ export class IRAmplifierAccessory {
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
       this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
       
-      // 7. Initialiser le volume si l'amplificateur est maintenant allumé
-      if (this.isOn) {
-        this.log.info('CEC: Amplifier is now ON - starting volume initialization...');
-        await this.initializeVolumeAfterPowerOn();
-      }
+        // 7. Initialiser le volume si l'amplificateur est maintenant allumé
+        if (this.isOn) {
+          this.log.info('CEC: Amplifier is now ON - skipping volume initialization to avoid interrupting AirPlay');
+          // Note: Volume initialization disabled for CEC power-on to avoid interrupting AirPlay
+          // The volume will be managed by the user or Apple TV directly
+        }
     } else {
       this.log.error('CEC: Failed to send power ON command');
     }
@@ -811,7 +812,7 @@ export class IRAmplifierAccessory {
         const cecProcess = spawn('cec-ctl', [
           '-d', '/dev/cec0',
           '--to', '0',  // TV (device 0)
-          '--active-source', '1.0.0.0'  // Physical address HDMI1
+          '--active-source', '1000'  // Physical address HDMI1 (format: 1000 = 1.0.0.0)
         ]);
 
         let output = '';
