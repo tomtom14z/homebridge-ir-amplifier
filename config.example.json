@@ -11,7 +11,8 @@
           "source": "2600500000012b...",
           "volumeUp": "2600500000012c...",
           "volumeDown": "2600500000012d...",
-          "mute": "2600500000012e..."
+          "mute": "2600500000012e...",
+          "hdmi1": "2600500000012f..."
         }
       },
       "volumeInit": {
@@ -19,6 +20,11 @@
         "maxVolumeSteps": 50,
         "startupVolume": 7,
         "delayBetweenSteps": 200
+      },
+      "powerOnEnhancements": {
+        "autoHDMI1": true,
+        "tplinkPowerCheck": true,
+        "tplinkPowerOnDelay": 3
       },
       "tplink": {
         "host": "192.168.1.101"

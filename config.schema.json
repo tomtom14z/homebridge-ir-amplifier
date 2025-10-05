@@ -65,6 +65,11 @@
                 "title": "Mute Command",
                 "type": "string",
                 "description": "Hex IR command for mute (optional, will use volumeDown if not provided)"
+              },
+              "hdmi1": {
+                "title": "HDMI1 Command",
+                "type": "string",
+                "description": "Hex IR command for switching TV to HDMI1 (optional, for auto HDMI1 feature)"
               }
             },
             "required": ["power", "source", "volumeUp", "volumeDown"]
@@ -108,6 +113,33 @@
           }
         },
         "required": ["enabled", "maxVolumeSteps", "startupVolume", "delayBetweenSteps"]
+      },
+      "powerOnEnhancements": {
+        "title": "Power On Enhancements",
+        "type": "object",
+        "properties": {
+          "autoHDMI1": {
+            "title": "Auto Switch to HDMI1",
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically switch TV to HDMI1 when Apple TV powers on amplifier"
+          },
+          "tplinkPowerCheck": {
+            "title": "TP-Link Power Check",
+            "type": "boolean",
+            "default": true,
+            "description": "Check and ensure TP-Link plug is ON before sending IR commands"
+          },
+          "tplinkPowerOnDelay": {
+            "title": "TP-Link Power On Delay (seconds)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "default": 3,
+            "description": "Delay after turning on TP-Link plug before sending IR commands"
+          }
+        },
+        "required": ["autoHDMI1", "tplinkPowerCheck", "tplinkPowerOnDelay"]
       },
           "tplink": {
             "title": "TP-Link Configuration",

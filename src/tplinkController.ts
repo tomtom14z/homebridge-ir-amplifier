@@ -193,4 +193,47 @@ export class TPLinkController {
       }
     }, interval);
   }
+
+  /**
+   * Ensure TP-Link plug is powered ON before sending IR commands
+   * Returns true if plug is ON or was successfully turned ON
+   */
+  async ensurePlugIsOn(): Promise<boolean> {
+    try {
+      if (!this.device) {
+        this.log.error('TP-Link device not initialized');
+        return false;
+      }
+
+      // Check current power state
+      const currentState = await this.device.getPowerState();
+      this.log.info('TP-Link current power state:', currentState);
+
+      if (currentState) {
+        this.log.info('TP-Link plug is already ON - ready for IR commands');
+        return true;
+      }
+
+      // Plug is OFF, turn it ON
+      this.log.info('TP-Link plug is OFF - turning it ON...');
+      await this.device.setPowerState(true);
+      
+      // Wait a moment for the plug to turn on
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Verify it's now ON
+      const newState = await this.device.getPowerState();
+      if (newState) {
+        this.log.info('TP-Link plug successfully turned ON');
+        return true;
+      } else {
+        this.log.error('Failed to turn ON TP-Link plug');
+        return false;
+      }
+
+    } catch (error) {
+      this.log.error('Error ensuring TP-Link plug is ON:', error);
+      return false;
+    }
+  }
 }

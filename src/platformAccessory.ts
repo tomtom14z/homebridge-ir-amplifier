@@ -108,7 +108,7 @@ export class IRAmplifierAccessory {
       // Envoyer la commande IR via Broadlink
       this.log.info('Sending IR command to change amplifier state');
       const success = boolValue 
-        ? await this.broadlinkController.powerOn()
+        ? await this.handlePowerOnWithEnhancements()
         : await this.broadlinkController.powerOff();
       
       if (success) {
@@ -552,27 +552,27 @@ export class IRAmplifierAccessory {
       return;
     }
     
-    this.log.info('CEC: Amplifier is OFF - sending IR power command to turn ON');
+    this.log.info('CEC: Amplifier is OFF - preparing to send IR power command');
     
-    // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
-    const success = await this.broadlinkController.powerOn();
+    // Utiliser la méthode helper pour gérer l'allumage avec les améliorations
+    const success = await this.handlePowerOnWithEnhancements();
     
     if (success) {
       this.log.info('CEC: Power ON command sent successfully');
       
-      // Attendre un peu pour que la commande IR prenne effet
+      // 4. Attendre un peu pour que la commande IR prenne effet
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Vérifier le nouvel état TP-Link
+      // 5. Vérifier le nouvel état TP-Link
       const newTpLinkState = await this.tplinkController.getInUseState();
       this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
       
-      // Mettre à jour l'état local et HomeKit
+      // 6. Mettre à jour l'état local et HomeKit
       this.isOn = newTpLinkState;
       this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
       this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
       
-      // Initialiser le volume si l'amplificateur est maintenant allumé
+      // 7. Initialiser le volume si l'amplificateur est maintenant allumé
       if (this.isOn) {
         this.log.info('CEC: Amplifier is now ON - starting volume initialization...');
         await this.initializeVolumeAfterPowerOn();
@@ -724,6 +724,47 @@ export class IRAmplifierAccessory {
     } catch (error) {
       this.log.error('Error during volume initialization:', error);
     }
+  }
+
+  /**
+   * Handle power on with enhancements (TP-Link check and HDMI1)
+   * Used by both HomeKit and CEC power on events
+   */
+  private async handlePowerOnWithEnhancements(): Promise<boolean> {
+    // 1. Vérifier et allumer la prise TP-Link si nécessaire
+    if (this.broadlinkController.isTPLinkPowerCheckEnabled()) {
+      this.log.info('Checking TP-Link plug power state...');
+      const plugReady = await this.tplinkController.ensurePlugIsOn();
+      
+      if (!plugReady) {
+        this.log.error('Failed to ensure TP-Link plug is ON - aborting power on');
+        return false;
+      }
+      
+      // Attendre le délai configuré après l'allumage de la prise
+      const delay = this.broadlinkController.getTPLinkPowerOnDelay();
+      this.log.info(`Waiting ${delay} seconds after TP-Link plug power on...`);
+      await new Promise(resolve => setTimeout(resolve, delay * 1000));
+    }
+    
+    // 2. Envoyer la commande IR d'allumage
+    this.log.info('Sending IR power command to turn ON amplifier');
+    const success = await this.broadlinkController.powerOn();
+    
+    if (success) {
+      // 3. Envoyer la commande HDMI1 si activée
+      if (this.broadlinkController.isAutoHDMI1Enabled()) {
+        this.log.info('Sending HDMI1 command to switch TV to HDMI1...');
+        const hdmiSuccess = await this.broadlinkController.sendHDMI1Command();
+        if (hdmiSuccess) {
+          this.log.info('HDMI1 command sent successfully');
+        } else {
+          this.log.warn('HDMI1 command failed or not configured');
+        }
+      }
+    }
+    
+    return success;
   }
 
   private cleanup() {
