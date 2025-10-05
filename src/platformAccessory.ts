@@ -549,6 +549,17 @@ export class IRAmplifierAccessory {
     
     if (currentTpLinkState) {
       this.log.info('CEC: Amplifier is already ON - skipping IR command to avoid unnecessary power toggle');
+      
+      // Même si l'amplificateur est déjà allumé, envoyer la commande HDMI1 si activée
+      if (this.broadlinkController.isAutoHDMI1Enabled()) {
+        this.log.info('CEC: Amplifier already ON - sending HDMI1 command via CEC...');
+        const hdmiSuccess = await this.sendCECHdmi1Command();
+        if (hdmiSuccess) {
+          this.log.info('CEC: HDMI1 CEC command sent successfully');
+        } else {
+          this.log.warn('CEC: HDMI1 CEC command failed');
+        }
+      }
       return;
     }
     
