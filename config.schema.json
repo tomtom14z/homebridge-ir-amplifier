@@ -65,11 +65,6 @@
                 "title": "Mute Command",
                 "type": "string",
                 "description": "Hex IR command for mute (optional, will use volumeDown if not provided)"
-              },
-              "hdmi1": {
-                "title": "HDMI1 Command",
-                "type": "string",
-                "description": "Hex IR command for switching TV to HDMI1 (optional, for auto HDMI1 feature)"
               }
             },
             "required": ["power", "source", "volumeUp", "volumeDown"]
@@ -122,7 +117,7 @@
             "title": "Auto Switch to HDMI1",
             "type": "boolean",
             "default": true,
-            "description": "Automatically switch TV to HDMI1 when Apple TV powers on amplifier"
+            "description": "Automatically switch TV to HDMI1 via CEC when Apple TV powers on amplifier"
           },
           "tplinkPowerCheck": {
             "title": "TP-Link Power Check",

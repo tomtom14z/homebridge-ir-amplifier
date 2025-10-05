@@ -554,6 +554,11 @@ export class IRAmplifierAccessory {
     
     this.log.info('CEC: Amplifier is OFF - preparing to send IR power command');
     
+    // Debug: Vérifier la configuration des améliorations
+    this.log.info('CEC: Power enhancements config - autoHDMI1:', this.broadlinkController.isAutoHDMI1Enabled());
+    this.log.info('CEC: Power enhancements config - tplinkPowerCheck:', this.broadlinkController.isTPLinkPowerCheckEnabled());
+    this.log.info('CEC: Power enhancements config - tplinkPowerOnDelay:', this.broadlinkController.getTPLinkPowerOnDelay());
+    
     // Utiliser la méthode helper pour gérer l'allumage avec les améliorations
     const success = await this.handlePowerOnWithEnhancements();
     
@@ -731,8 +736,11 @@ export class IRAmplifierAccessory {
    * Used by both HomeKit and CEC power on events
    */
   private async handlePowerOnWithEnhancements(): Promise<boolean> {
+    this.log.info('handlePowerOnWithEnhancements: Starting enhanced power on sequence');
+    
     // 1. Vérifier et allumer la prise TP-Link si nécessaire
     if (this.broadlinkController.isTPLinkPowerCheckEnabled()) {
+      this.log.info('handlePowerOnWithEnhancements: TP-Link power check is ENABLED');
       this.log.info('Checking TP-Link plug power state...');
       const plugReady = await this.tplinkController.ensurePlugIsOn();
       
@@ -745,26 +753,89 @@ export class IRAmplifierAccessory {
       const delay = this.broadlinkController.getTPLinkPowerOnDelay();
       this.log.info(`Waiting ${delay} seconds after TP-Link plug power on...`);
       await new Promise(resolve => setTimeout(resolve, delay * 1000));
+    } else {
+      this.log.info('handlePowerOnWithEnhancements: TP-Link power check is DISABLED');
     }
     
     // 2. Envoyer la commande IR d'allumage
-    this.log.info('Sending IR power command to turn ON amplifier');
+    this.log.info('handlePowerOnWithEnhancements: Sending IR power command to turn ON amplifier');
     const success = await this.broadlinkController.powerOn();
     
     if (success) {
-      // 3. Envoyer la commande HDMI1 si activée
+      this.log.info('handlePowerOnWithEnhancements: IR power command sent successfully');
+      
+      // 3. Envoyer la commande HDMI1 via CEC si activée
       if (this.broadlinkController.isAutoHDMI1Enabled()) {
-        this.log.info('Sending HDMI1 command to switch TV to HDMI1...');
-        const hdmiSuccess = await this.broadlinkController.sendHDMI1Command();
+        this.log.info('handlePowerOnWithEnhancements: Auto HDMI1 is ENABLED');
+        this.log.info('Sending HDMI1 command via CEC to switch TV to HDMI1...');
+        const hdmiSuccess = await this.sendCECHdmi1Command();
         if (hdmiSuccess) {
-          this.log.info('HDMI1 command sent successfully');
+          this.log.info('HDMI1 CEC command sent successfully');
         } else {
-          this.log.warn('HDMI1 command failed or not configured');
+          this.log.warn('HDMI1 CEC command failed');
         }
+      } else {
+        this.log.info('handlePowerOnWithEnhancements: Auto HDMI1 is DISABLED');
       }
+    } else {
+      this.log.error('handlePowerOnWithEnhancements: IR power command failed');
     }
     
+    this.log.info('handlePowerOnWithEnhancements: Enhanced power on sequence completed, success:', success);
     return success;
+  }
+
+  /**
+   * Send HDMI1 command via CEC to switch TV to HDMI1 input
+   */
+  private async sendCECHdmi1Command(): Promise<boolean> {
+    try {
+      this.log.info('Sending CEC HDMI1 command to switch TV to HDMI1...');
+      
+      // Utiliser cec-ctl pour envoyer la commande HDMI1
+      const { spawn } = require('child_process');
+      
+      return new Promise((resolve) => {
+        // Commande CEC pour basculer sur HDMI1 (physical address 1.0.0.0)
+        const cecProcess = spawn('cec-ctl', [
+          '-d', '/dev/cec0',
+          '--to', '0',  // TV (device 0)
+          '--active-source', '1.0.0.0'  // Physical address HDMI1
+        ]);
+
+        let output = '';
+        let errorOutput = '';
+
+        cecProcess.stdout.on('data', (data: Buffer) => {
+          output += data.toString();
+        });
+
+        cecProcess.stderr.on('data', (data: Buffer) => {
+          errorOutput += data.toString();
+        });
+
+        cecProcess.on('close', (code: number) => {
+          if (code === 0) {
+            this.log.info('CEC HDMI1 command sent successfully');
+            this.log.debug('CEC HDMI1 output:', output);
+            resolve(true);
+          } else {
+            this.log.error('CEC HDMI1 command failed with code:', code);
+            this.log.error('CEC HDMI1 error:', errorOutput);
+            resolve(false);
+          }
+        });
+
+        cecProcess.on('error', (error: Error) => {
+          this.log.error('Failed to execute CEC HDMI1 command:', error);
+          resolve(false);
+        });
+      });
+
+    } catch (error) {
+      this.log.error('Error sending CEC HDMI1 command:', error);
+      return false;
+    }
   }
 
   private cleanup() {

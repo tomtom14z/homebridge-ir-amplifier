@@ -14,7 +14,6 @@ export interface IRAmplifierConfig {
       volumeUp: string;
       volumeDown: string;
       mute?: string;
-      hdmi1?: string;
     };
   };
   volumeInit?: {
@@ -244,18 +243,6 @@ export class BroadlinkController {
     return this.config.volumeInit?.startupVolume || 20;
   }
 
-  /**
-   * Send HDMI1 command to switch TV to HDMI1 input
-   */
-  async sendHDMI1Command(): Promise<boolean> {
-    if (!this.config.broadlink.commands.hdmi1) {
-      this.log.warn('HDMI1 command not configured - skipping HDMI1 switch');
-      return false;
-    }
-
-    this.log.info('Sending HDMI1 command to switch TV to HDMI1 input...');
-    return this.sendCommand(this.config.broadlink.commands.hdmi1);
-  }
 
   /**
    * Check if power on enhancements are enabled
