@@ -547,10 +547,6 @@ export class IRAmplifierAccessory {
     const currentTpLinkState = await this.tplinkController.getInUseState();
     this.log.info('CEC: Apple TV requested amplifier ON - current TP-Link state:', currentTpLinkState);
     
-    // Délai pour laisser Apple TV se stabiliser avant d'allumer l'amplificateur
-    this.log.info('CEC: Waiting 2 seconds for Apple TV to stabilize before turning on amplifier...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
     if (currentTpLinkState) {
       this.log.info('CEC: Amplifier is already ON - skipping IR command to avoid unnecessary power toggle');
       
@@ -579,6 +575,19 @@ export class IRAmplifierAccessory {
     
     if (success) {
       this.log.info('CEC: Power ON command sent successfully');
+      
+      // Envoyer immédiatement la commande HDMI1 en parallèle (la TV gère les commandes CEC en arrière-plan pendant qu'elle s'allume)
+      if (this.broadlinkController.isAutoHDMI1Enabled()) {
+        this.log.info('CEC: Sending HDMI1 command immediately via CEC...');
+        // Ne pas attendre (fire and forget) pour ne pas bloquer l'initialisation du volume
+        this.sendCECHdmi1Command().then(hdmiSuccess => {
+          if (hdmiSuccess) {
+            this.log.info('CEC: HDMI1 CEC command sent successfully');
+          } else {
+            this.log.warn('CEC: HDMI1 CEC command failed');
+          }
+        });
+      }
       
       // 4. Attendre un peu pour que la commande IR prenne effet
       await new Promise(resolve => setTimeout(resolve, 2000));
