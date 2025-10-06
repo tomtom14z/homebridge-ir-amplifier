@@ -766,6 +766,9 @@ export class IRAmplifierAccessory {
     if (this.broadlinkController.isTPLinkPowerCheckEnabled()) {
       this.log.info('handlePowerOnWithEnhancements: TP-Link power check is ENABLED');
       this.log.info('Checking TP-Link plug power state...');
+      
+      // Vérifier l'état actuel avant d'appeler ensurePlugIsOn
+      const currentState = await this.tplinkController.getInUseState();
       const plugReady = await this.tplinkController.ensurePlugIsOn();
       
       if (!plugReady) {
@@ -773,10 +776,14 @@ export class IRAmplifierAccessory {
         return false;
       }
       
-      // Attendre le délai configuré après l'allumage de la prise
-      const delay = this.broadlinkController.getTPLinkPowerOnDelay();
-      this.log.info(`Waiting ${delay} seconds after TP-Link plug power on...`);
-      await new Promise(resolve => setTimeout(resolve, delay * 1000));
+      // Attendre le délai configuré SEULEMENT si la prise était OFF et a été allumée
+      if (!currentState) {
+        const delay = this.broadlinkController.getTPLinkPowerOnDelay();
+        this.log.info(`TP-Link plug was OFF and turned ON - waiting ${delay} seconds for stabilization...`);
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+      } else {
+        this.log.info('TP-Link plug was already ON - no delay needed, proceeding immediately');
+      }
     } else {
       this.log.info('handlePowerOnWithEnhancements: TP-Link power check is DISABLED');
     }
