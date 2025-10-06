@@ -62,17 +62,24 @@ sync_cec_state_from_homebridge() {
                 
                 # Envoyer la commande HDMI1 via CEC
                 log "📺 Sending HDMI1 command to TV..."
-                # Utiliser uniquement la commande directe (compatible avec toutes les versions)
+                # Utiliser la syntaxe standard (sans tx) pour les versions anciennes
                 # 4F:82:10:00 = Active Source command avec l'adresse physique 1.0.0.0 (Apple TV)
-                cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
+                cec-ctl -d /dev/cec0 --to 0 4F:82:10:00 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    log "✅ HDMI1 command sent successfully (direct tx: 4F:82:10:00)"
+                    log "✅ HDMI1 command sent successfully (standard syntax: 4F:82:10:00)"
                 else
-                    log "❌ HDMI1 command failed"
-                    log "🔍 Debug: Testing cec-ctl version and permissions..."
-                    cec-ctl --version 2>&1 | head -1
-                    log "🔍 Debug: Testing device access..."
-                    ls -la /dev/cec0 2>&1
+                    log "❌ Standard syntax failed, trying with spaces..."
+                    # Essayer avec des espaces au lieu de ':'
+                    cec-ctl -d /dev/cec0 --to 0 4F 82 10 00 >/dev/null 2>&1
+                    if [ $? -eq 0 ]; then
+                        log "✅ HDMI1 command sent successfully (spaced syntax: 4F 82 10 00)"
+                    else
+                        log "❌ All HDMI1 command attempts failed"
+                        log "🔍 Debug: Testing cec-ctl version and permissions..."
+                        cec-ctl --version 2>&1 | head -1
+                        log "🔍 Debug: Testing device access..."
+                        ls -la /dev/cec0 2>&1
+                    fi
                 fi
                 
                 # Supprimer le fichier après traitement
