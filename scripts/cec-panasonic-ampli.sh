@@ -62,24 +62,17 @@ sync_cec_state_from_homebridge() {
                 
                 # Envoyer la commande HDMI1 via CEC
                 log "📺 Sending HDMI1 command to TV..."
-                # Utiliser la syntaxe standard (sans tx) pour les versions anciennes
-                # 4F:82:10:00 = Active Source command avec l'adresse physique 1.0.0.0 (Apple TV)
-                cec-ctl -d /dev/cec0 --to 0 4F:82:10:00 >/dev/null 2>&1
+                # Utiliser --active-source avec l'adresse physique de l'Apple TV (HDMI1 = 1.0.0.0 = 0x1000)
+                # Cette commande est un broadcast, pas besoin de --to
+                cec-ctl -d /dev/cec0 --active-source phys-addr=0x1000 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    log "✅ HDMI1 command sent successfully (standard syntax: 4F:82:10:00)"
+                    log "✅ HDMI1 command sent successfully (active-source phys-addr=0x1000)"
                 else
-                    log "❌ Standard syntax failed, trying with spaces..."
-                    # Essayer avec des espaces au lieu de ':'
-                    cec-ctl -d /dev/cec0 --to 0 4F 82 10 00 >/dev/null 2>&1
-                    if [ $? -eq 0 ]; then
-                        log "✅ HDMI1 command sent successfully (spaced syntax: 4F 82 10 00)"
-                    else
-                        log "❌ All HDMI1 command attempts failed"
-                        log "🔍 Debug: Testing cec-ctl version and permissions..."
-                        cec-ctl --version 2>&1 | head -1
-                        log "🔍 Debug: Testing device access..."
-                        ls -la /dev/cec0 2>&1
-                    fi
+                    log "❌ HDMI1 command failed"
+                    log "🔍 Debug: Testing cec-ctl version and permissions..."
+                    cec-ctl --version 2>&1 | head -1
+                    log "🔍 Debug: Testing device access..."
+                    ls -la /dev/cec0 2>&1
                 fi
                 
                 # Supprimer le fichier après traitement
