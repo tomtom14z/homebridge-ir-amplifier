@@ -62,17 +62,25 @@ sync_cec_state_from_homebridge() {
                 
                 # Envoyer la commande HDMI1 via CEC
                 log "📺 Sending HDMI1 command to TV..."
-                cec-ctl -d /dev/cec0 --to 0 --active-source 1000 >/dev/null 2>&1
+                # Utiliser l'adresse physique d'Apple TV (1.0.0.0 = 4096 en décimal)
+                cec-ctl -d /dev/cec0 --to 0 --active-source 4096 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    log "✅ HDMI1 command sent successfully"
+                    log "✅ HDMI1 command sent successfully (Apple TV address: 1.0.0.0)"
                 else
                     log "❌ HDMI1 command failed, trying alternative syntax..."
-                    # Essayer d'autres syntaxes
-                    cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
+                    # Essayer avec l'adresse hex
+                    cec-ctl -d /dev/cec0 --to 0 --active-source 1000 >/dev/null 2>&1
                     if [ $? -eq 0 ]; then
-                        log "✅ HDMI1 command sent successfully (alternative syntax)"
+                        log "✅ HDMI1 command sent successfully (hex format: 1000)"
                     else
-                        log "❌ All HDMI1 command attempts failed"
+                        log "❌ Trying direct tx command..."
+                        # Essayer la commande directe
+                        cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
+                        if [ $? -eq 0 ]; then
+                            log "✅ HDMI1 command sent successfully (direct tx)"
+                        else
+                            log "❌ All HDMI1 command attempts failed"
+                        fi
                     fi
                 fi
                 
