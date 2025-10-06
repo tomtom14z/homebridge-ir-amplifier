@@ -62,24 +62,26 @@ sync_cec_state_from_homebridge() {
                 
                 # Envoyer la commande HDMI1 via CEC
                 log "📺 Sending HDMI1 command to TV..."
-                # Utiliser l'adresse physique d'Apple TV (1.0.0.0 = 4096 en décimal)
-                cec-ctl -d /dev/cec0 --to 0 --active-source 4096 >/dev/null 2>&1
+                # Essayer d'abord la commande directe (compatible avec toutes les versions)
+                cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    log "✅ HDMI1 command sent successfully (Apple TV address: 1.0.0.0)"
+                    log "✅ HDMI1 command sent successfully (direct tx: 4F:82:10:00)"
                 else
-                    log "❌ HDMI1 command failed, trying alternative syntax..."
-                    # Essayer avec l'adresse hex
-                    cec-ctl -d /dev/cec0 --to 0 --active-source 1000 >/dev/null 2>&1
+                    log "❌ Direct tx failed, trying active-source syntax..."
+                    # Essayer avec active-source (si supporté)
+                    cec-ctl -d /dev/cec0 --to 0 --active-source 4096 >/dev/null 2>&1
                     if [ $? -eq 0 ]; then
-                        log "✅ HDMI1 command sent successfully (hex format: 1000)"
+                        log "✅ HDMI1 command sent successfully (active-source: 4096)"
                     else
-                        log "❌ Trying direct tx command..."
-                        # Essayer la commande directe
-                        cec-ctl -d /dev/cec0 --to 0 tx 4F:82:10:00 >/dev/null 2>&1
+                        log "❌ Active-source failed, trying hex format..."
+                        # Essayer avec l'adresse hex
+                        cec-ctl -d /dev/cec0 --to 0 --active-source 1000 >/dev/null 2>&1
                         if [ $? -eq 0 ]; then
-                            log "✅ HDMI1 command sent successfully (direct tx)"
+                            log "✅ HDMI1 command sent successfully (hex format: 1000)"
                         else
                             log "❌ All HDMI1 command attempts failed"
+                            log "🔍 Debug: Testing cec-ctl version compatibility..."
+                            cec-ctl --version 2>&1 | head -1
                         fi
                     fi
                 fi
