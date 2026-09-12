@@ -3,6 +3,11 @@
     {
       "platform": "IRAmplifier",
       "name": "IR Amplifier",
+      "irBackend": "auto",
+      "gpio": {
+        "device": "/dev/lirc0",
+        "carrierHz": 38000
+      },
       "broadlink": {
         "host": "192.168.1.100",
         "mac": "AA:BB:CC:DD:EE:FF",

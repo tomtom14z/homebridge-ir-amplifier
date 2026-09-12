@@ -11,6 +11,36 @@
         "default": "IR Amplifier",
         "description": "Name of the platform in Homebridge"
       },
+      "irBackend": {
+        "title": "IR Backend",
+        "type": "string",
+        "default": "auto",
+        "oneOf": [
+          { "title": "Auto (GPIO puis Broadlink)", "enum": ["auto"] },
+          { "title": "GPIO local (ir-ctl / LIRC)", "enum": ["gpio"] },
+          { "title": "Broadlink RM Pro", "enum": ["broadlink"] }
+        ],
+        "description": "Les commandes hex Broadlink existantes sont réutilisées pour l'émetteur GPIO local."
+      },
+      "gpio": {
+        "title": "GPIO / LIRC",
+        "type": "object",
+        "properties": {
+          "device": {
+            "title": "Périphérique LIRC",
+            "type": "string",
+            "default": "/dev/lirc0",
+            "description": "Périphérique ir-ctl (gpio-ir-tx)"
+          },
+          "carrierHz": {
+            "title": "Porteuse IR (Hz)",
+            "type": "integer",
+            "default": 38000,
+            "minimum": 30000,
+            "maximum": 56000
+          }
+        }
+      },
       "broadlink": {
         "title": "Broadlink Configuration",
         "type": "object",
@@ -65,12 +95,36 @@
                 "title": "Mute Command",
                 "type": "string",
                 "description": "Hex IR command for mute (optional, will use volumeDown if not provided)"
+              },
+              "menu": {
+                "title": "AMP MENU",
+                "type": "string"
+              },
+              "up": {
+                "title": "Up",
+                "type": "string"
+              },
+              "down": {
+                "title": "Down",
+                "type": "string"
+              },
+              "left": {
+                "title": "Left",
+                "type": "string"
+              },
+              "right": {
+                "title": "Right",
+                "type": "string"
+              },
+              "enter": {
+                "title": "Enter",
+                "type": "string"
               }
             },
             "required": ["power", "source", "volumeUp", "volumeDown"]
           }
         },
-        "required": ["host", "mac", "commands"]
+        "required": ["commands"]
       },
       "volumeInit": {
         "title": "Volume Initialization",

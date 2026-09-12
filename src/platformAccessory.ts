@@ -1,19 +1,22 @@
-import * as fs from 'fs';  // For file watching (Node.js built-in)
 import { API, Characteristic, CharacteristicValue, Logger, PlatformAccessory, Service } from 'homebridge';
 import { IRAmplifierPlatform } from './index';
-import { BroadlinkController } from './broadlinkController';
 import { TPLinkController } from './tplinkController';
 import { OCRController, OCRResult } from './ocrController';
-// import { CECController } from './cecController'; // Désactivé - utilise le service CEC externe
+import { AmplifierState } from './state/amplifierState';
+import { IrBackend } from './ir/irBackend';
+import { initializeVolume, getStartupVolume } from './ir/volumeInit';
+import {
+  getTPLinkPowerOnDelay,
+  isAutoHDMI1Enabled,
+  isTPLinkPowerCheckEnabled,
+} from './config/powerOn';
+import { IRAmplifierConfig } from './types';
 
 export class IRAmplifierAccessory {
   private service: Service;
   private speakerService: Service;
   private volumeService: Service;
 
-  private currentVolume = 50;
-  private targetVolume = 50;
-  private isOn = false;
   private isSourceCorrect = false;
   private lastOCRCheck = 0;
   private volumeSyncInProgress = false;
@@ -26,10 +29,11 @@ export class IRAmplifierAccessory {
   constructor(
     private readonly platform: IRAmplifierPlatform,
     private readonly accessory: PlatformAccessory,
-    private readonly broadlinkController: BroadlinkController,
+    private readonly ir: IrBackend,
     private readonly tplinkController: TPLinkController,
     private readonly ocrController: OCRController,
-    private readonly cecController: any, // null - utilise le service CEC externe
+    private readonly state: AmplifierState,
+    private readonly pluginConfig: IRAmplifierConfig,
   ) {
     this.log = platform.log;
     this.api = platform.api;
@@ -66,7 +70,7 @@ export class IRAmplifierAccessory {
       this.accessory.addService(this.Service.Lightbulb);
 
     this.volumeService.setCharacteristic(this.Characteristic.Name, 'Volume Control');
-    this.volumeService.setCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+    this.volumeService.setCharacteristic(this.Characteristic.Brightness, this.state.getEstimatedVolume());
 
     this.volumeService.getCharacteristic(this.Characteristic.Brightness)
       .onSet(this.setVolumeBrightness.bind(this))
@@ -81,11 +85,21 @@ export class IRAmplifierAccessory {
   private Service: typeof Service;
   private Characteristic: typeof Characteristic;
 
+  private publishPower(): void {
+    this.service.updateCharacteristic(this.Characteristic.On, this.state.isOn());
+  }
+
+  private publishVolume(): void {
+    const volume = this.state.getEstimatedVolume();
+    this.speakerService.updateCharacteristic(this.Characteristic.Volume, volume);
+    this.volumeService.updateCharacteristic(this.Characteristic.Brightness, volume);
+  }
+
   private async setPowerState(value: CharacteristicValue) {
     const boolValue = value as boolean;
     this.log.info('=== SET POWER STATE CALLED ===');
     this.log.info('Requested state:', boolValue);
-    this.log.info('Current accessory state:', this.isOn);
+    this.log.info('Current accessory state:', this.state.isOn());
     this.log.info('Pending state change:', this.pendingStateChange);
     
     // Vérifier l'état actuel de TP-Link
@@ -101,15 +115,15 @@ export class IRAmplifierAccessory {
       this.log.info('Pending state change flag set to TRUE');
       
       // Mettre à jour immédiatement l'état dans HomeKit (état temporaire)
-      this.isOn = boolValue;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('HomeKit state set to temporary state:', this.isOn);
+      this.state.setPowerOn(boolValue, 'homekit');
+      this.publishPower();
+      this.log.info('HomeKit state set to temporary state:', this.state.isOn());
       
       // Envoyer la commande IR via Broadlink
       this.log.info('Sending IR command to change amplifier state');
       const success = boolValue 
         ? await this.handlePowerOnWithEnhancements()
-        : await this.broadlinkController.powerOff();
+        : await this.ir.send('powerOff');
       
       if (success) {
         this.log.info('IR command sent successfully, scheduling verification');
@@ -129,16 +143,16 @@ export class IRAmplifierAccessory {
       } else {
         this.log.error('Failed to send IR command');
         // Remettre l'état précédent en cas d'échec
-        this.isOn = currentTpLinkState;
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+        this.state.setPowerOn(currentTpLinkState, 'hs110');
+        this.publishPower();
         this.pendingStateChange = false;
         this.log.info('State reverted due to IR command failure');
       }
     } else {
       this.log.info('No state change needed - already matches');
       // S'assurer que HomeKit reflète l'état réel
-      this.isOn = currentTpLinkState;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
+      this.state.setPowerOn(currentTpLinkState, 'hs110');
+      this.publishPower();
     }
     
     this.log.info('=== SET POWER STATE COMPLETED ===');
@@ -162,7 +176,7 @@ export class IRAmplifierAccessory {
     try {
       this.log.info('=== VERIFYING STATE CHANGE ===');
       this.log.info('Expected state:', expectedState);
-      this.log.info('Current accessory state:', this.isOn);
+      this.log.info('Current accessory state:', this.state.isOn());
       this.log.info('Pending state change:', this.pendingStateChange);
       
       // Vérifier l'état actuel de TP-Link
@@ -172,23 +186,23 @@ export class IRAmplifierAccessory {
       if (actualTpLinkState === expectedState) {
         // L'état correspond, confirmer
         this.log.info('State change confirmed - TP-Link matches expected state');
-        this.isOn = actualTpLinkState;
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('HomeKit state confirmed to:', this.isOn);
+        this.state.setPowerOn(actualTpLinkState, 'hs110');
+        this.publishPower();
+        this.log.info('HomeKit state confirmed to:', this.state.isOn());
         
         // Synchroniser l'état CEC avec l'état confirmé
-        this.syncCECState(this.isOn);
+        this.syncCECState(this.state.isOn());
       } else {
         // L'état ne correspond pas, corriger
         this.log.warn('State mismatch detected - TP-Link:', actualTpLinkState, 'Expected:', expectedState);
         this.log.info('Correcting HomeKit state to match TP-Link reality');
         
-        this.isOn = actualTpLinkState;
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('HomeKit state corrected to:', this.isOn);
+        this.state.setPowerOn(actualTpLinkState, 'hs110');
+        this.publishPower();
+        this.log.info('HomeKit state corrected to:', this.state.isOn());
         
         // Synchroniser l'état CEC avec l'état corrigé
-        this.syncCECState(this.isOn);
+        this.syncCECState(this.state.isOn());
       }
       
       // Marquer que le changement d'état est terminé
@@ -209,24 +223,24 @@ export class IRAmplifierAccessory {
     
     // Check TP-Link power consumption to determine if amplifier is on
     const inUse = await this.tplinkController.getInUseState();
-    this.log.debug('TP-Link inUse:', inUse, 'Current accessory state:', this.isOn);
+    this.log.debug('TP-Link inUse:', inUse, 'Current accessory state:', this.state.isOn());
     
     // Ne pas mettre à jour l'état si un changement est en cours
     if (!this.pendingStateChange) {
-    this.isOn = inUse;
-      this.log.debug('Accessory state updated to:', this.isOn);
+      this.state.setPowerOn(inUse, 'hs110');
+      this.log.debug('Accessory state updated to:', this.state.isOn());
     } else {
       this.log.debug('Skipping state update - pending state change in progress');
     }
     
-    this.log.debug('Returning power state:', this.isOn);
-    return this.isOn;
+    this.log.debug('Returning power state:', this.state.isOn());
+    return this.state.isOn();
   }
 
   private async setVolume(value: CharacteristicValue) {
     const numValue = value as number;
     this.log.info('Setting volume to:', value);
-    this.targetVolume = numValue;
+    this.state.setRequestedVolume(numValue);
     
     if (this.volumeSyncInProgress) {
       this.log.debug('Volume sync in progress, skipping');
@@ -246,7 +260,7 @@ export class IRAmplifierAccessory {
       await this.checkOCRVolume();
     }
     
-    return this.currentVolume;
+    return this.state.getEstimatedVolume();
   }
 
   private async setVolumeBrightness(value: CharacteristicValue) {
@@ -256,37 +270,34 @@ export class IRAmplifierAccessory {
   }
 
   private async getVolumeBrightness(): Promise<number> {
-    return this.currentVolume;
+    return this.state.getEstimatedVolume();
   }
 
   private async syncVolumeToTarget() {
     if (this.volumeSyncInProgress) return;
     
     this.volumeSyncInProgress = true;
-    this.log.info('Syncing volume from', this.currentVolume, 'to', this.targetVolume);
+    this.log.info('Syncing volume from', this.state.getEstimatedVolume(), 'to', this.state.getRequestedVolume());
 
     try {
-      const difference = this.targetVolume - this.currentVolume;
+      const difference = this.state.getRequestedVolume() - this.state.getEstimatedVolume();
       const steps = Math.abs(difference);
       
       for (let i = 0; i < steps; i++) {
         if (difference > 0) {
-          await this.broadlinkController.volumeUp();
-          this.currentVolume++;
+          await this.ir.send('volumeUp');
+          this.state.adjustEstimatedVolume(1);
         } else {
-          await this.broadlinkController.volumeDown();
-          this.currentVolume--;
+          await this.ir.send('volumeDown');
+          this.state.adjustEstimatedVolume(-1);
         }
         
-        // Update services
-        this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-        this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+        this.publishVolume();
         
-        // Small delay between commands
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
-      this.log.info('Volume sync completed. Current volume:', this.currentVolume);
+      this.log.info('Volume sync completed. Current volume:', this.state.getEstimatedVolume());
     } catch (error) {
       this.log.error('Error during volume sync:', error);
     } finally {
@@ -301,15 +312,12 @@ export class IRAmplifierAccessory {
 
       if (result.volume !== null && result.confidence > 0.7) {
         const ocrVolume = result.volume;
-        const difference = Math.abs(ocrVolume - this.currentVolume);
+        const difference = Math.abs(ocrVolume - this.state.getEstimatedVolume());
         
         if (difference > 5) { // Significant difference
-          this.log.info('OCR detected volume mismatch. OCR:', ocrVolume, 'Current:', this.currentVolume);
-          this.currentVolume = ocrVolume;
-          
-          // Update services
-          this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-          this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
+          this.log.info('OCR detected volume mismatch. OCR:', ocrVolume, 'Current:', this.state.getEstimatedVolume());
+          this.state.confirmVolume(ocrVolume, result.confidence);
+          this.publishVolume();
         }
       }
 
@@ -321,7 +329,7 @@ export class IRAmplifierAccessory {
         if (!isVideo2) {
           this.log.warn('Source is not VIDEO 2. Current source:', result.source);
           // Optionally send source toggle command
-          // await this.broadlinkController.sourceToggle();
+          // await this.ir.send('source');
         }
       }
     } catch (error) {
@@ -333,11 +341,11 @@ export class IRAmplifierAccessory {
     // Monitor TP-Link power state
     this.tplinkController.startPowerMonitoring(async (inUse: boolean) => {
       this.log.debug('=== TP-LINK MONITORING CALLBACK ===');
-      this.log.debug('TP-Link inUse:', inUse, 'Accessory state:', this.isOn);
+      this.log.debug('TP-Link inUse:', inUse, 'Accessory state:', this.state.isOn());
       this.log.debug('Pending state change:', this.pendingStateChange);
       
-      if (inUse !== this.isOn) {
-        this.log.info('TP-Link: Power state changed:', this.isOn, '→', inUse);
+      if (inUse !== this.state.isOn()) {
+        this.log.info('TP-Link: Power state changed:', this.state.isOn(), '→', inUse);
         
         // Ne pas interférer si un changement d'état est en cours
         if (this.pendingStateChange) {
@@ -345,20 +353,20 @@ export class IRAmplifierAccessory {
           return;
         }
         
-        this.isOn = inUse;
-        this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-        this.log.info('TP-Link: Updated HomeKit power state to:', this.isOn);
+        this.state.setPowerOn(inUse, 'hs110');
+        this.publishPower();
+        this.log.info('TP-Link: Updated HomeKit power state to:', this.state.isOn());
         
         // Délai avant de synchroniser CEC pour éviter les conflits
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Synchroniser l'état CEC avec TP-Link (local seulement)
-        this.log.debug('TP-Link: CEC state synchronized locally with TP-Link:', this.isOn);
+        this.log.debug('TP-Link: CEC state synchronized locally with TP-Link:', this.state.isOn());
       } else {
         this.log.debug('TP-Link: No state change needed');
         
         // Même si pas de changement d'état, s'assurer que CEC est synchronisé localement
-        this.log.debug('TP-Link: CEC state synchronized locally with current state:', this.isOn);
+        this.log.debug('TP-Link: CEC state synchronized locally with current state:', this.state.isOn());
       }
     });
 
@@ -380,7 +388,7 @@ export class IRAmplifierAccessory {
       try {
         this.log.debug('=== PERIODIC VERIFICATION ===');
         this.log.debug('Pending state change:', this.pendingStateChange);
-        this.log.debug('Current accessory state:', this.isOn);
+        this.log.debug('Current accessory state:', this.state.isOn());
         
         // Ne pas vérifier si un changement d'état est en cours
         if (this.pendingStateChange) {
@@ -389,19 +397,17 @@ export class IRAmplifierAccessory {
         }
         
         const tpLinkState = await this.tplinkController.getInUseState();
-        this.log.debug('TP-Link state:', tpLinkState, 'Accessory state:', this.isOn);
+        this.log.debug('TP-Link state:', tpLinkState, 'Accessory state:', this.state.isOn());
         
-        if (tpLinkState !== this.isOn) {
-          this.log.info('Periodic check - State mismatch detected - TP-Link:', tpLinkState, 'Accessory:', this.isOn);
+        if (tpLinkState !== this.state.isOn()) {
+          this.log.info('Periodic check - State mismatch detected - TP-Link:', tpLinkState, 'Accessory:', this.state.isOn());
           this.log.info('Correcting accessory state to match TP-Link');
           
-          // Corriger l'état de l'accessoire
-          this.isOn = tpLinkState;
-          this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-          this.log.info('Accessory state corrected to:', this.isOn);
+          this.state.setPowerOn(tpLinkState, 'hs110');
+          this.publishPower();
+          this.log.info('Accessory state corrected to:', this.state.isOn());
           
-          // CEC synchronisé localement avec l'état corrigé
-          this.log.debug('CEC: State corrected locally:', this.isOn);
+          this.log.debug('CEC: State corrected locally:', this.state.isOn());
         } else {
           this.log.debug('Periodic check - States match, no correction needed');
         }
@@ -420,12 +426,11 @@ export class IRAmplifierAccessory {
       this.log.info('Initial TP-Link state (inUse):', tpLinkState);
       
       // Mettre à jour l'état local de l'accessoire avec l'état réel de TP-Link
-      this.isOn = tpLinkState;
-      this.log.info('Accessory state synchronized with TP-Link:', this.isOn);
+      this.state.setPowerOn(tpLinkState, 'hs110');
+      this.log.info('Accessory state synchronized with TP-Link:', this.state.isOn());
       
-      // Mettre à jour HomeKit avec l'état réel (ignorer le cache)
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('HomeKit state updated to real TP-Link state:', this.isOn);
+      this.publishPower();
+      this.log.info('HomeKit state updated to real TP-Link state:', this.state.isOn());
       
       // CEC géré par le service externe
       this.log.info('CEC handled by external service - no internal CEC state');
@@ -434,13 +439,12 @@ export class IRAmplifierAccessory {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Synchroniser l'état CEC avec l'état initial
-      this.syncCECState(this.isOn);
+      this.syncCECState(this.state.isOn());
       this.log.info('CEC: Initial state synchronized with CEC bus');
       
-      // Récupérer le volume initial
       await this.getVolume();
       
-      this.log.info('State synchronization completed - Accessory:', this.isOn, 'TP-Link:', tpLinkState, 'CEC: external service');
+      this.log.info('State synchronization completed - Accessory:', this.state.isOn(), 'TP-Link:', tpLinkState, 'CEC: external service');
     } catch (error) {
       this.log.error('Error during state synchronization:', error);
     }
@@ -551,7 +555,7 @@ export class IRAmplifierAccessory {
       this.log.info('CEC: Amplifier is already ON - skipping IR command to avoid unnecessary power toggle');
       
       // Même si l'amplificateur est déjà allumé, envoyer la commande HDMI1 si activée
-      if (this.broadlinkController.isAutoHDMI1Enabled()) {
+      if (isAutoHDMI1Enabled(this.pluginConfig)) {
         this.log.info('CEC: Amplifier already ON - sending HDMI1 command via CEC...');
         const hdmiSuccess = await this.sendCECHdmi1Command();
         if (hdmiSuccess) {
@@ -566,9 +570,9 @@ export class IRAmplifierAccessory {
     this.log.info('CEC: Amplifier is OFF - preparing to send IR power command');
     
     // Debug: Vérifier la configuration des améliorations
-    this.log.info('CEC: Power enhancements config - autoHDMI1:', this.broadlinkController.isAutoHDMI1Enabled());
-    this.log.info('CEC: Power enhancements config - tplinkPowerCheck:', this.broadlinkController.isTPLinkPowerCheckEnabled());
-    this.log.info('CEC: Power enhancements config - tplinkPowerOnDelay:', this.broadlinkController.getTPLinkPowerOnDelay());
+    this.log.info('CEC: Power enhancements config - autoHDMI1:', isAutoHDMI1Enabled(this.pluginConfig));
+    this.log.info('CEC: Power enhancements config - tplinkPowerCheck:', isTPLinkPowerCheckEnabled(this.pluginConfig));
+    this.log.info('CEC: Power enhancements config - tplinkPowerOnDelay:', getTPLinkPowerOnDelay(this.pluginConfig));
     
     // Utiliser la méthode helper pour gérer l'allumage avec les améliorations
     const success = await this.handlePowerOnWithEnhancements();
@@ -577,7 +581,7 @@ export class IRAmplifierAccessory {
       this.log.info('CEC: Power ON command sent successfully');
       
       // Envoyer immédiatement la commande HDMI1 en parallèle (la TV gère les commandes CEC en arrière-plan pendant qu'elle s'allume)
-      if (this.broadlinkController.isAutoHDMI1Enabled()) {
+      if (isAutoHDMI1Enabled(this.pluginConfig)) {
         this.log.info('CEC: Sending HDMI1 command immediately via CEC...');
         // Ne pas attendre (fire and forget) pour ne pas bloquer l'initialisation du volume
         this.sendCECHdmi1Command().then(hdmiSuccess => {
@@ -597,12 +601,11 @@ export class IRAmplifierAccessory {
       this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
       
       // 6. Mettre à jour l'état local et HomeKit
-      this.isOn = newTpLinkState;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+      this.state.setPowerOn(newTpLinkState, 'hs110');
+      this.publishPower();
+      this.log.info('CEC: Updated HomeKit power state to:', this.state.isOn());
       
-        // 7. Initialiser le volume si l'amplificateur est maintenant allumé
-        if (this.isOn) {
+        if (this.state.isOn()) {
           this.log.info('CEC: Amplifier is now ON - starting volume initialization...');
           await this.initializeVolumeAfterPowerOn();
         }
@@ -624,7 +627,7 @@ export class IRAmplifierAccessory {
     this.log.info('CEC: Amplifier is ON - sending IR power command to turn OFF');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
-    const success = await this.broadlinkController.powerOff();
+    const success = await this.ir.send('powerOff');
     
     if (success) {
       this.log.info('CEC: Power OFF command sent successfully');
@@ -637,9 +640,9 @@ export class IRAmplifierAccessory {
       this.log.info('CEC: After IR command - TP-Link state:', newTpLinkState);
       
       // Mettre à jour l'état local et HomeKit
-      this.isOn = newTpLinkState;
-      this.service.updateCharacteristic(this.Characteristic.On, this.isOn);
-      this.log.info('CEC: Updated HomeKit power state to:', this.isOn);
+      this.state.setPowerOn(newTpLinkState, 'hs110');
+      this.publishPower();
+      this.log.info('CEC: Updated HomeKit power state to:', this.state.isOn());
     } else {
       this.log.error('CEC: Failed to send power OFF command');
     }
@@ -649,14 +652,12 @@ export class IRAmplifierAccessory {
     this.log.info('CEC: Volume UP requested - sending IR volume up command');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
-    const success = await this.broadlinkController.volumeUp();
+    const success = await this.ir.send('volumeUp');
     
     if (success) {
-      // Mettre à jour le volume local seulement si la commande IR a réussi
-      this.currentVolume = Math.min(100, this.currentVolume + 1);
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Volume UP command sent successfully, volume now:', this.currentVolume);
+      this.state.adjustEstimatedVolume(1);
+      this.publishVolume();
+      this.log.info('CEC: Volume UP command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send volume UP command');
     }
@@ -666,14 +667,12 @@ export class IRAmplifierAccessory {
     this.log.info('CEC: Volume DOWN requested - sending IR volume down command');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
-    const success = await this.broadlinkController.volumeDown();
+    const success = await this.ir.send('volumeDown');
     
     if (success) {
-      // Mettre à jour le volume local seulement si la commande IR a réussi
-      this.currentVolume = Math.max(0, this.currentVolume - 1);
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.currentVolume);
+      this.state.adjustEstimatedVolume(-1);
+      this.publishVolume();
+      this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send volume DOWN command');
     }
@@ -683,14 +682,14 @@ export class IRAmplifierAccessory {
     this.log.info('CEC: Mute toggle requested - sending IR mute command');
     
     // Envoyer directement la commande IR (les callbacks onSet ne sont pas déclenchés depuis le code)
-    const success = await this.broadlinkController.mute();
+    const success = await this.ir.send('mute');
     
     if (success) {
-      // Basculer l'état mute
-      this.currentVolume = this.currentVolume === 0 ? 50 : 0; // Toggle entre 0 et 50
-      this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-      this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-      this.log.info('CEC: Mute command sent successfully, volume now:', this.currentVolume);
+      const nextVolume = this.state.getEstimatedVolume() === 0 ? 50 : 0;
+      this.state.setMuted(nextVolume === 0);
+      this.state.setEstimatedVolume(nextVolume, 'mute toggle');
+      this.publishVolume();
+      this.log.info('CEC: Mute command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send mute command');
     }
@@ -736,17 +735,15 @@ export class IRAmplifierAccessory {
       this.log.info('Starting volume initialization after power on...');
       
       // Appeler la méthode d'initialisation du volume du BroadlinkController
-      const success = await this.broadlinkController.initializeVolume();
+      const success = await initializeVolume(this.ir, this.pluginConfig, this.log);
       
       if (success) {
         this.log.info('Volume initialization completed successfully');
         
-        // Mettre à jour le volume virtuel HomeKit avec le volume de démarrage configuré
-        const startupVolume = this.broadlinkController.getStartupVolume();
-        this.currentVolume = startupVolume;
-        this.speakerService.updateCharacteristic(this.Characteristic.Volume, this.currentVolume);
-        this.volumeService.updateCharacteristic(this.Characteristic.Brightness, this.currentVolume);
-        this.log.info(`HomeKit volume updated to startup volume: ${this.currentVolume}%`);
+        const startupVolume = getStartupVolume(this.pluginConfig);
+        this.state.setEstimatedVolume(startupVolume, 'startup');
+        this.publishVolume();
+        this.log.info(`HomeKit volume updated to startup volume: ${startupVolume}%`);
       } else {
         this.log.error('Volume initialization failed');
       }
@@ -763,7 +760,7 @@ export class IRAmplifierAccessory {
     this.log.info('handlePowerOnWithEnhancements: Starting enhanced power on sequence');
     
     // 1. Vérifier et allumer la prise TP-Link si nécessaire
-    if (this.broadlinkController.isTPLinkPowerCheckEnabled()) {
+    if (isTPLinkPowerCheckEnabled(this.pluginConfig)) {
       this.log.info('handlePowerOnWithEnhancements: TP-Link power check is ENABLED');
       this.log.info('Checking TP-Link plug power state...');
       
@@ -778,7 +775,7 @@ export class IRAmplifierAccessory {
       
       // Attendre le délai configuré SEULEMENT si la prise était OFF et a été allumée
       if (!currentState) {
-        const delay = this.broadlinkController.getTPLinkPowerOnDelay();
+        const delay = getTPLinkPowerOnDelay(this.pluginConfig);
         this.log.info(`TP-Link plug was OFF and turned ON - waiting ${delay} seconds for stabilization...`);
         await new Promise(resolve => setTimeout(resolve, delay * 1000));
       } else {
@@ -790,13 +787,13 @@ export class IRAmplifierAccessory {
     
     // 2. Envoyer la commande IR d'allumage
     this.log.info('handlePowerOnWithEnhancements: Sending IR power command to turn ON amplifier');
-    const success = await this.broadlinkController.powerOn();
+    const success = await this.ir.send('powerOn');
     
     if (success) {
       this.log.info('handlePowerOnWithEnhancements: IR power command sent successfully');
       
         // 3. Envoyer la commande HDMI1 via CEC si activée
-        if (this.broadlinkController.isAutoHDMI1Enabled()) {
+        if (isAutoHDMI1Enabled(this.pluginConfig)) {
           this.log.info('handlePowerOnWithEnhancements: Auto HDMI1 is ENABLED');
           this.log.info('Sending HDMI1 command via CEC to switch TV to HDMI1...');
           const hdmiSuccess = await this.sendCECHdmi1Command();
