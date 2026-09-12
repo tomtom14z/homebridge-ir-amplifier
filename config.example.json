@@ -35,8 +35,24 @@
       },
       "ocr": {
         "enabled": false,
+        "backend": "rpicam",
         "cameraUrl": "http://192.168.1.102:8080/snapshot",
-        "checkInterval": 30000
+        "snapshotDir": "/var/lib/homebridge/ir-amplifier/camera",
+        "saveSnapshots": true,
+        "debugSnapshots": true,
+        "width": 1920,
+        "height": 672,
+        "roi": {
+          "x": 0.14,
+          "y": 0.54,
+          "width": 0.84,
+          "height": 0.30
+        },
+        "captureAfterVolumeMs": 400,
+        "captureFrames": 2,
+        "captureFrameGapMs": 120,
+        "recognize": false,
+        "periodic": false
       },
       "cec": {
         "deviceName": "IR Amplifier",

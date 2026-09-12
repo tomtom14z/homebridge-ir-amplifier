@@ -21,6 +21,16 @@ export interface GpioIrConfig {
   carrierHz?: number;
 }
 
+export type CameraBackend = 'http' | 'rpicam';
+
+/** Normalized crop (0–1) on the camera sensor / frame, same as rpicam --roi. */
+export interface CameraRoi {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface IRAmplifierConfig {
   irBackend?: IrBackendName;
   irCommands?: IrCommandsConfig;
@@ -51,8 +61,23 @@ export interface IRAmplifierConfig {
   };
   ocr?: {
     enabled?: boolean;
+    backend?: CameraBackend;
     cameraUrl?: string;
     checkInterval?: number;
+    snapshotDir?: string;
+    saveSnapshots?: boolean;
+    debugSnapshots?: boolean;
+    width?: number;
+    height?: number;
+    roi?: CameraRoi;
+    /** Wait this long after the last volume IR before capturing. 0 = disable. */
+    captureAfterVolumeMs?: number;
+    captureFrames?: number;
+    captureFrameGapMs?: number;
+    /** Run Tesseract/templates. Off by default — capture-only is enough to debug. */
+    recognize?: boolean;
+    /** Legacy continuous polling. Off by default. */
+    periodic?: boolean;
   };
 }
 

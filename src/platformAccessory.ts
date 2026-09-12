@@ -10,6 +10,7 @@ import {
   isAutoHDMI1Enabled,
   isTPLinkPowerCheckEnabled,
 } from './config/powerOn';
+import { writeCecAudioStatus } from './cec/audioStatus';
 import { IRAmplifierConfig } from './types';
 
 export class IRAmplifierAccessory {
@@ -18,7 +19,6 @@ export class IRAmplifierAccessory {
   private volumeService: Service;
 
   private isSourceCorrect = false;
-  private lastOCRCheck = 0;
   private volumeSyncInProgress = false;
   
   // Gestion de l'état temporaire pour TP-Link
@@ -89,10 +89,13 @@ export class IRAmplifierAccessory {
     this.service.updateCharacteristic(this.Characteristic.On, this.state.isOn());
   }
 
-  private publishVolume(): void {
+  private publishVolume(reportCec = false): void {
     const volume = this.state.getEstimatedVolume();
     this.speakerService.updateCharacteristic(this.Characteristic.Volume, volume);
     this.volumeService.updateCharacteristic(this.Characteristic.Brightness, volume);
+    if (reportCec) {
+      writeCecAudioStatus(this.log, this.state, this.pluginConfig);
+    }
   }
 
   private async setPowerState(value: CharacteristicValue) {
@@ -254,12 +257,6 @@ export class IRAmplifierAccessory {
   }
 
   private async getVolume(): Promise<number> {
-    // Check OCR for current volume if enough time has passed
-    const now = Date.now();
-    if (now - this.lastOCRCheck > 10000) { // Check every 10 seconds
-      await this.checkOCRVolume();
-    }
-    
     return this.state.getEstimatedVolume();
   }
 
@@ -293,11 +290,13 @@ export class IRAmplifierAccessory {
         }
         
         this.publishVolume();
+        this.ocrController.scheduleAfterVolumeBurst();
         
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       this.log.info('Volume sync completed. Current volume:', this.state.getEstimatedVolume());
+      writeCecAudioStatus(this.log, this.state, this.pluginConfig);
     } catch (error) {
       this.log.error('Error during volume sync:', error);
     } finally {
@@ -305,35 +304,30 @@ export class IRAmplifierAccessory {
     }
   }
 
-  private async checkOCRVolume() {
+  private async applyOcrResult(result: OCRResult) {
     try {
-      const result: OCRResult = await this.ocrController.getVolumeAndSource();
-      this.lastOCRCheck = Date.now();
-
       if (result.volume !== null && result.confidence > 0.7) {
         const ocrVolume = result.volume;
         const difference = Math.abs(ocrVolume - this.state.getEstimatedVolume());
-        
-        if (difference > 5) { // Significant difference
-          this.log.info('OCR detected volume mismatch. OCR:', ocrVolume, 'Current:', this.state.getEstimatedVolume());
+
+        if (difference > 0) {
+          this.log.info('[OCR] Volume recalé:', this.state.getEstimatedVolume(), '→', ocrVolume);
           this.state.confirmVolume(ocrVolume, result.confidence);
-          this.publishVolume();
+          this.publishVolume(true);
         }
       }
 
       if (result.source !== null) {
-        const isVideo2 = result.source.toLowerCase().includes('video 2') || 
+        const isVideo2 = result.source.toLowerCase().includes('video 2') ||
                         result.source.toLowerCase().includes('video2');
         this.isSourceCorrect = isVideo2;
-        
+
         if (!isVideo2) {
           this.log.warn('Source is not VIDEO 2. Current source:', result.source);
-          // Optionally send source toggle command
-          // await this.ir.send('source');
         }
       }
     } catch (error) {
-      this.log.error('Error checking OCR:', error);
+      this.log.error('Error applying OCR result:', error);
     }
   }
 
@@ -370,9 +364,11 @@ export class IRAmplifierAccessory {
       }
     });
 
-    // Start periodic OCR checking
+    this.ocrController.onCaptureResult((result: OCRResult) => {
+      void this.applyOcrResult(result);
+    });
     this.ocrController.startPeriodicCheck((result: OCRResult) => {
-      this.checkOCRVolume();
+      void this.applyOcrResult(result);
     });
 
     // Start periodic state verification
@@ -656,7 +652,8 @@ export class IRAmplifierAccessory {
     
     if (success) {
       this.state.adjustEstimatedVolume(1);
-      this.publishVolume();
+      this.publishVolume(true);
+      this.ocrController.scheduleAfterVolumeBurst();
       this.log.info('CEC: Volume UP command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send volume UP command');
@@ -671,7 +668,8 @@ export class IRAmplifierAccessory {
     
     if (success) {
       this.state.adjustEstimatedVolume(-1);
-      this.publishVolume();
+      this.publishVolume(true);
+      this.ocrController.scheduleAfterVolumeBurst();
       this.log.info('CEC: Volume DOWN command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send volume DOWN command');
@@ -688,7 +686,8 @@ export class IRAmplifierAccessory {
       const nextVolume = this.state.getEstimatedVolume() === 0 ? 50 : 0;
       this.state.setMuted(nextVolume === 0);
       this.state.setEstimatedVolume(nextVolume, 'mute toggle');
-      this.publishVolume();
+      this.publishVolume(true);
+      this.ocrController.scheduleAfterVolumeBurst();
       this.log.info('CEC: Mute command sent successfully, volume now:', this.state.getEstimatedVolume());
     } else {
       this.log.error('CEC: Failed to send mute command');
@@ -742,8 +741,9 @@ export class IRAmplifierAccessory {
         
         const startupVolume = getStartupVolume(this.pluginConfig);
         this.state.setEstimatedVolume(startupVolume, 'startup');
-        this.publishVolume();
+        this.publishVolume(true);
         this.log.info(`HomeKit volume updated to startup volume: ${startupVolume}%`);
+        this.ocrController.scheduleAfterVolumeBurst();
       } else {
         this.log.error('Volume initialization failed');
       }

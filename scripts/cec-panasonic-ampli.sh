@@ -31,6 +31,45 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
+report_cec_audio_status() {
+    local vol="$1"
+    local mute="$2"
+    log "📶 CEC Report Audio Status volume=${vol} mute=${mute}"
+    # TV (0) puis Apple TV / playback (4)
+    cec-ctl -d /dev/cec0 --to 0 --report-audio-status "aud-mute=${mute},aud-vol-lfe=${vol}" >/dev/null 2>&1 || \
+        cec-ctl -d /dev/cec0 --to 0 --report-audio-status aud-mute="${mute}",aud-vol-lfe="${vol}" >/dev/null 2>&1
+    cec-ctl -d /dev/cec0 --to 4 --report-audio-status "aud-mute=${mute},aud-vol-lfe=${vol}" >/dev/null 2>&1 || true
+}
+
+sync_cec_audio_from_homebridge() {
+    local audio_file="/var/lib/homebridge/homebridge-to-cec-audio.json"
+    if [ ! -f "$audio_file" ]; then
+        return
+    fi
+
+    local vol
+    local mute
+    vol=$(jq -r '.volume' "$audio_file" 2>/dev/null)
+    mute=$(jq -r '.mute' "$audio_file" 2>/dev/null)
+    rm -f "$audio_file"
+
+    if [[ "$vol" =~ ^[0-9]+$ ]]; then
+        [ "$mute" != "1" ] && mute=0
+        echo "$vol" > /var/lib/homebridge/cec-last-volume
+        echo "$mute" > /var/lib/homebridge/cec-last-mute
+        report_cec_audio_status "$vol" "$mute"
+    fi
+}
+
+reply_give_audio_status() {
+    local vol=50
+    local mute=0
+    [ -f /var/lib/homebridge/cec-last-volume ] && vol=$(cat /var/lib/homebridge/cec-last-volume)
+    [ -f /var/lib/homebridge/cec-last-mute ] && mute=$(cat /var/lib/homebridge/cec-last-mute)
+    log "📥 Give Audio Status (0x71) → reply volume=${vol}"
+    report_cec_audio_status "$vol" "$mute"
+} 
+
 # Fonction pour lire l'état de Homebridge et synchroniser l'état CEC
 sync_cec_state_from_homebridge() {
     local state_file="/var/lib/homebridge/homebridge-to-cec.json"
@@ -130,6 +169,15 @@ log "🔄 Starting periodic CEC state synchronization with Homebridge..."
 ) &
 SYNC_PID=$!
 
+log "🔄 Starting CEC audio status watcher..."
+(
+    while true; do
+        sleep 0.2
+        sync_cec_audio_from_homebridge
+    done
+) &
+AUDIO_PID=$!
+
 # 5. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
 log "📡 Starting cec-follower monitoring (with verbose, wall-clock timestamps, show-msgs, show-state) - Ctrl+C to stop"
 log "🎛️ Select 'Home Cinema' in VIERA Link and test volume/power!"
@@ -175,6 +223,10 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "power" "standby"
     fi
     
+    if echo "$line" | grep -iq "give-audio-status\|give audio status\|0x71"; then
+        reply_give_audio_status
+    fi
+    
     # Log current volume after volume/mute change
     if echo "$line" | grep -iq "volume|mute|0x41|0x42|0x43"; then
         VOLUME=$(amixer get Master | grep -o '[0-9]\+%' | head -1 | sed 's/%//')
@@ -203,5 +255,6 @@ done
 # Nettoyer le processus de synchronisation
 log "🔄 Stopping CEC state synchronization..."
 kill $SYNC_PID 2>/dev/null
+kill $AUDIO_PID 2>/dev/null
 
 log "CEC Panasonic Ampli service stopped"

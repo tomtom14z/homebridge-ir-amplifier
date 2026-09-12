@@ -213,11 +213,91 @@
                 "default": false,
                 "description": "Enable OCR volume detection (requires camera)"
               },
+              "backend": {
+                "title": "Camera backend",
+                "type": "string",
+                "default": "http",
+                "oneOf": [
+                  { "title": "Caméra IP (URL HTTP)", "enum": ["http"] },
+                  { "title": "Caméra CSI Raspberry Pi", "enum": ["rpicam"] }
+                ],
+                "description": "http = snapshot IP. rpicam = caméra CSI du Pi (rpicam-still / libcamera / raspistill)."
+              },
               "cameraUrl": {
                 "title": "Camera URL",
                 "type": "string",
                 "format": "uri",
-                "description": "URL of the camera pointing at the amplifier screen"
+                "description": "URL snapshot si backend=http (ex: http://192.168.1.102:8080/snapshot)"
+              },
+              "snapshotDir": {
+                "title": "Dossier snapshots debug",
+                "type": "string",
+                "default": "/var/lib/homebridge/ir-amplifier/camera",
+                "description": "last.jpg y est écrit à chaque capture"
+              },
+              "saveSnapshots": {
+                "title": "Sauver last.jpg",
+                "type": "boolean",
+                "default": true
+              },
+              "debugSnapshots": {
+                "title": "Sauver chaque capture horodatée",
+                "type": "boolean",
+                "default": false
+              },
+              "width": {
+                "title": "Largeur capture CSI",
+                "type": "integer",
+                "default": 1920,
+                "description": "Résolution de sortie après recadrage"
+              },
+              "height": {
+                "title": "Hauteur capture CSI",
+                "type": "integer",
+                "default": 672
+              },
+              "roi": {
+                "title": "Recadrage afficheur (0–1)",
+                "type": "object",
+                "description": "Zoom numérique rpicam --roi sur toute la vitre de l'afficheur. x,y,width,height en fraction du capteur.",
+                "properties": {
+                  "x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.14 },
+                  "y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.54 },
+                  "width": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.84 },
+                  "height": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.30 }
+                }
+              },
+              "captureAfterVolumeMs": {
+                "title": "Délai après last Volume +/- (ms)",
+                "type": "integer",
+                "default": 400,
+                "minimum": 0,
+                "maximum": 2000,
+                "description": "Capture uniquement après stabilisation de la rafale. 0 = désactivé. L'afficheur reste ~2s."
+              },
+              "captureFrames": {
+                "title": "Nombre de captures",
+                "type": "integer",
+                "default": 2,
+                "minimum": 1,
+                "maximum": 5
+              },
+              "captureFrameGapMs": {
+                "title": "Écart entre captures (ms)",
+                "type": "integer",
+                "default": 120
+              },
+              "recognize": {
+                "title": "Reconnaissance (Tesseract)",
+                "type": "boolean",
+                "default": false,
+                "description": "Laisser off pour l'instant : photo seule. Templates ensuite."
+              },
+              "periodic": {
+                "title": "Capture périodique",
+                "type": "boolean",
+                "default": false,
+                "description": "Ne pas activer sur Pi 2B"
               },
               "checkInterval": {
                 "title": "Check Interval (ms)",
@@ -225,7 +305,7 @@
                 "default": 30000,
                 "minimum": 5000,
                 "maximum": 300000,
-                "description": "Interval between OCR checks in milliseconds"
+                "description": "Uniquement si periodic=true"
               }
             },
             "required": []
