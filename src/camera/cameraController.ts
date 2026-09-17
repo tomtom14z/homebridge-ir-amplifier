@@ -17,6 +17,8 @@ export class CameraController {
   private readonly height: number;
   private readonly roi?: CameraRoi;
   private readonly backend: CameraBackend;
+  private cameraMissingLogged = false;
+  private cameraRetryAfter = 0;
 
   constructor(
     private readonly log: Logger,
@@ -40,6 +42,10 @@ export class CameraController {
   }
 
   async capture(): Promise<Buffer | null> {
+    if (Date.now() < this.cameraRetryAfter) {
+      return null;
+    }
+
     try {
       const buffer = this.backend === 'http'
         ? await this.captureHttp()
@@ -50,9 +56,31 @@ export class CameraController {
       }
       return buffer;
     } catch (error) {
-      this.log.error('[CAMERA] Capture failed:', error);
+      this.handleCaptureError(error);
       return null;
     }
+  }
+
+  private handleCaptureError(error: unknown): void {
+    const text = error instanceof Error
+      ? `${error.message}\n${(error as Error & { stderr?: string }).stderr ?? ''}`
+      : String(error);
+    const noCamera = /no cameras available/i.test(text);
+
+    if (noCamera) {
+      this.cameraRetryAfter = Date.now() + 5 * 60 * 1000;
+      if (!this.cameraMissingLogged) {
+        this.cameraMissingLogged = true;
+        this.log.error(
+          '[CAMERA] rpicam-still ne voit aucune caméra CSI. ' +
+          'Le process Homebridge n\'a pas les groupes video/render. ' +
+          'À lancer une fois : sudo usermod -aG video,render homebridge && sudo hb-service restart',
+        );
+      }
+      return;
+    }
+
+    this.log.error('[CAMERA] Capture failed:', error);
   }
 
   private async captureHttp(): Promise<Buffer | null> {

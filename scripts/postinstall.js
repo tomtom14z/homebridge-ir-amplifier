@@ -22,11 +22,52 @@ if (process.platform !== 'linux') {
 const isRoot = process.getuid && process.getuid() === 0;
 const hasSudo = !isRoot && execSync('which sudo', { stdio: 'ignore' });
 
+function runRoot(cmd) {
+    const command = isRoot ? cmd : `sudo ${cmd}`;
+    execSync(command, { stdio: 'inherit' });
+}
+
+function ensureCameraGroups() {
+    try {
+        execSync('id homebridge', { stdio: 'ignore' });
+    } catch {
+        return;
+    }
+
+    for (const group of ['video', 'render', 'plugdev']) {
+        try {
+            execSync(`getent group ${group}`, { stdio: 'ignore' });
+            runRoot(`usermod -aG ${group} homebridge`);
+        } catch {
+            // groupe absent sur cette image
+        }
+    }
+
+    try {
+        const dropInDir = '/etc/systemd/system/homebridge.service.d';
+        runRoot(`mkdir -p ${dropInDir}`);
+        const conf = [
+            '[Service]',
+            'SupplementaryGroups=video render plugdev',
+            '',
+        ].join('\n');
+        const tmp = '/tmp/ir-amplifier-camera.conf';
+        fs.writeFileSync(tmp, conf);
+        runRoot(`cp ${tmp} ${dropInDir}/ir-amplifier-camera.conf`);
+        runRoot('systemctl daemon-reload');
+        console.log('📷 Groupes caméra CSI : homebridge → video,render (redémarrer Homebridge pour activer)');
+    } catch (error) {
+        console.log('⚠️  Impossible d\'ajouter les groupes caméra:', error.message);
+    }
+}
+
 if (!isRoot && !hasSudo) {
-    console.log('⚠️  Service CEC non installé - privilèges root requis');
+    console.log('⚠️  Service CEC / caméra non configurés - privilèges root requis');
     console.log('   Pour installer manuellement: sudo ./scripts/install-cec-panasonic.sh');
     process.exit(0);
 }
+
+ensureCameraGroups();
 
 try {
     // Vérifier que cec-utils est installé
