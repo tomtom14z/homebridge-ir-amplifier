@@ -651,6 +651,7 @@ export class IRAmplifierAccessory {
     const success = await this.ir.send('volumeUp');
     
     if (success) {
+      this.state.setMuted(false);
       this.state.adjustEstimatedVolume(1);
       this.publishVolume(true);
       this.ocrController.scheduleAfterVolumeBurst();
@@ -667,6 +668,7 @@ export class IRAmplifierAccessory {
     const success = await this.ir.send('volumeDown');
     
     if (success) {
+      this.state.setMuted(false);
       this.state.adjustEstimatedVolume(-1);
       this.publishVolume(true);
       this.ocrController.scheduleAfterVolumeBurst();
@@ -683,12 +685,10 @@ export class IRAmplifierAccessory {
     const success = await this.ir.send('mute');
     
     if (success) {
-      const nextVolume = this.state.getEstimatedVolume() === 0 ? 50 : 0;
-      this.state.setMuted(nextVolume === 0);
-      this.state.setEstimatedVolume(nextVolume, 'mute toggle');
+      this.state.setMuted(!this.state.isMuted());
       this.publishVolume(true);
       this.ocrController.scheduleAfterVolumeBurst();
-      this.log.info('CEC: Mute command sent successfully, volume now:', this.state.getEstimatedVolume());
+      this.log.info('CEC: Mute command sent successfully, muted:', this.state.isMuted());
     } else {
       this.log.error('CEC: Failed to send mute command');
     }

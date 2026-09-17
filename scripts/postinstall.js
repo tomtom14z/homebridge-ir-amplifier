@@ -9,17 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-console.log('🎛️  homebridge-ir-amplifier: Vérification du service CEC Panasonic Ampli...');
-
-// Vérifier si le service est déjà installé
-try {
-    execSync('systemctl is-active cec-panasonic-ampli.service', { stdio: 'ignore' });
-    console.log('✅ Service CEC Panasonic Ampli déjà installé et actif');
-    process.exit(0);
-} catch (error) {
-    // Service non installé ou inactif, continuer l'installation
-    console.log('🔧 Service CEC non trouvé, installation en cours...');
-}
+// Toujours réinstaller/mettre à jour le script : un service "actif" peut
+// encore pointer vers un vieux chemin node_modules après npm install -g.
 
 // Vérifier si nous sommes sur un système Linux
 if (process.platform !== 'linux') {

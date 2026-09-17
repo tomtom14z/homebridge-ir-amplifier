@@ -12,12 +12,18 @@ log() {
 notify_homebridge() {
     local action="$1"
     local value="$2"
+    local waited=0
     
-    # Attendre un peu si le fichier existe déjà (éviter les conflits)
-    while [ -f "/var/lib/homebridge/cec-to-homebridge.json" ] && [ -s "/var/lib/homebridge/cec-to-homebridge.json" ]; do
-        log "⏳ Waiting for Homebridge to process previous command..."
+    # Ne pas bloquer cec-follower si Homebridge n'a pas consommé le fichier
+    # (cas fréquent après réinstall : JSON restant ou plugin pas encore prêt)
+    while [ -f "/var/lib/homebridge/cec-to-homebridge.json" ] && [ -s "/var/lib/homebridge/cec-to-homebridge.json" ] && [ "$waited" -lt 20 ]; do
+        log "⏳ Waiting for Homebridge to process previous command... (${waited}/20)"
         sleep 0.1
+        waited=$((waited + 1))
     done
+    if [ "$waited" -ge 20 ]; then
+        log "⚠️ Homebridge n'a pas consommé cec-to-homebridge.json — overwrite"
+    fi
     
     # Créer le JSON de manière atomique pour éviter la corruption
     local json_data="{\"action\":\"$action\",\"value\":\"$value\",\"timestamp\":$(date +%s)}"
@@ -31,7 +37,11 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
-report_cec_audio_status() {
+refuse_arc() {
+    log "⛔ ARC refused (optical → home cinema, Pi is not an HDMI AVR)"
+    cec-ctl -d /dev/cec0 --to 0 --report-arc-terminated >/dev/null 2>&1 || \
+        cec-ctl -d /dev/cec0 --to 0 --feature-abort reason=refused >/dev/null 2>&1 || true
+}
     local vol="$1"
     local mute="$2"
     log "📶 CEC Report Audio Status volume=${vol} mute=${mute}"
@@ -61,12 +71,23 @@ sync_cec_audio_from_homebridge() {
     fi
 }
 
+LAST_GIVE_AUDIO_REPLY=0
+
 reply_give_audio_status() {
+    local now
+    now=$(date +%s)
+    if [ $((now - LAST_GIVE_AUDIO_REPLY)) -lt 1 ]; then
+        return
+    fi
+    LAST_GIVE_AUDIO_REPLY=$now
+
     local vol=50
     local mute=0
     [ -f /var/lib/homebridge/cec-last-volume ] && vol=$(cat /var/lib/homebridge/cec-last-volume)
     [ -f /var/lib/homebridge/cec-last-mute ] && mute=$(cat /var/lib/homebridge/cec-last-mute)
-    log "📥 Give Audio Status (0x71) → reply volume=${vol}"
+    [[ "$vol" =~ ^[0-9]+$ ]] || vol=50
+    [ "$mute" = "1" ] || mute=0
+    log "📥 Give Audio Status (0x71) → reply volume=${vol} mute=${mute}"
     report_cec_audio_status "$vol" "$mute"
 } 
 
@@ -87,8 +108,7 @@ sync_cec_state_from_homebridge() {
                 log "🔋 Syncing CEC state to ON"
                 cec-ctl -d /dev/cec0 --audio --power-on >/dev/null 2>&1
             else
-                log "🛑 Syncing CEC state to STANDBY"
-                cec-ctl -d /dev/cec0 --audio --standby >/dev/null 2>&1
+                log "🛑 Amp électrique OFF — on garde l'Audio System CEC (pas de standby, sinon la TV coupe le son)"
             fi
             
             # Supprimer le fichier après traitement
@@ -123,6 +143,12 @@ sync_cec_state_from_homebridge() {
 
 log "🎛️ CEC Panasonic Ampli - using cec-follower"
 
+mkdir -p /var/lib/homebridge
+if [ ! -f /var/lib/homebridge/cec-last-volume ]; then
+    echo 50 > /var/lib/homebridge/cec-last-volume
+fi
+echo 0 > /var/lib/homebridge/cec-last-mute
+
 # Vérifier que cec-ctl et cec-follower sont disponibles
 if ! command -v cec-ctl &> /dev/null; then
     log "ERROR: cec-ctl not found. Please install cec-utils"
@@ -149,10 +175,10 @@ sleep 1
 cec-ctl -d /dev/cec0 --cec-version-1.4 >/dev/null 2>&1
 sleep 1
 
-# 2. Set Features (including system audio mode support)
-log "📡 Setting Features..."
+# 2. Set Features — Audio System for volume keys, PAS d'ARC
+# (ARC ferait couper les HP TV : le Pi n'est pas un vrai ampli HDMI)
+log "📡 Setting Features (no ARC)..."
 cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
-cec-ctl -d /dev/cec0 --audio --feat-sink-has-arc-tx >/dev/null 2>&1
 cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
 
 # 3. Verification
@@ -223,8 +249,12 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "power" "standby"
     fi
     
-    if echo "$line" | grep -iq "give-audio-status\|give audio status\|0x71"; then
+    if echo "$line" | grep -Eiq "give-audio-status|give audio status|opcode: 0x71"; then
         reply_give_audio_status
+    fi
+    
+    if echo "$line" | grep -Eiq "REQUEST_ARC_INITIATION|request-arc-initiation"; then
+        refuse_arc
     fi
     
     # Log current volume after volume/mute change
@@ -233,11 +263,8 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         log "📶 Volume Panasonic: ${VOLUME}%"
     fi
     
-    # Power On (via System Audio Mode Request 0x70 as trigger)
-    if echo "$line" | grep -iq "system audio mode request|0x70"; then
-        log "🔋 POWER ON Panasonic! (via audio mode request)"
-        notify_homebridge "power" "on"
-    fi
+    # 0x70 = System Audio Mode Request, PAS un power on.
+    # phys-addr f.f.f.f = SAM off (la TV reprend ses HP) — ne pas allumer l'ampli IR.
     
     # Power On (via REPORT_POWER_STATUS: pwr-state: on)
     if echo "$line" | grep -iq "pwr-state: on.*0x00"; then

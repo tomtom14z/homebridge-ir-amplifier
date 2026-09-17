@@ -78,6 +78,7 @@ systemctl daemon-reload
 # Activer le service
 echo "Activation du service..."
 systemctl enable cec-panasonic-ampli.service
+systemctl restart cec-panasonic-ampli.service
 
 echo ""
 echo "=== Installation terminée ==="
