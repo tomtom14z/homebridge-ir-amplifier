@@ -37,10 +37,32 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
+SAM_LOCK=/var/lib/homebridge/cec-last-sam-on
+
+keep_sam_on() {
+    local now
+    now=$(date +%s)
+    local last=0
+    [ -f "$SAM_LOCK" ] && last=$(cat "$SAM_LOCK" 2>/dev/null)
+    [[ "$last" =~ ^[0-9]+$ ]] || last=0
+    if [ $((now - last)) -lt 2 ]; then
+        return
+    fi
+    echo "$now" > "$SAM_LOCK"
+
+    log "🔊 System Audio Mode ON (volume CEC, audio reste sur l'optique)"
+    # Broadcast 0x72 Set System Audio Mode [On] — sans ARC
+    cec-ctl -d /dev/cec0 --to 0 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
+        cec-ctl -d /dev/cec0 -t 15 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
+        cec-ctl -d /dev/cec0 --to 0 --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || true
+}
+
 refuse_arc() {
-    log "⛔ ARC refused (optical → home cinema, Pi is not an HDMI AVR)"
-    cec-ctl -d /dev/cec0 --to 0 --report-arc-terminated >/dev/null 2>&1 || \
+    log "⛔ ARC ignoré (optique → home cinéma) — on garde le System Audio Mode"
+    # Ne PAS envoyer Report ARC Terminated : la TV croit que l'ampli HDMI a disparu et reprend ses HP.
+    cec-ctl -d /dev/cec0 --to 0 --no-reply --feature-abort reason=unrecognized >/dev/null 2>&1 || \
         cec-ctl -d /dev/cec0 --to 0 --feature-abort reason=refused >/dev/null 2>&1 || true
+    keep_sam_on
 }
 
 report_cec_audio_status() {
@@ -169,9 +191,8 @@ sync_cec_state_from_homebridge() {
 log "🎛️ CEC Panasonic Ampli - using cec-follower"
 
 mkdir -p /var/lib/homebridge
-if [ ! -f /var/lib/homebridge/cec-last-volume ]; then
-    echo 50 > /var/lib/homebridge/cec-last-volume
-fi
+# Compteur OSD : ne pas repartir d'un reliquat HomeKit (7) / volume=2, sinon la TV lâche le SAM.
+echo 50 > /var/lib/homebridge/cec-last-volume
 echo 0 > /var/lib/homebridge/cec-last-mute
 
 # Vérifier que cec-ctl et cec-follower sont disponibles
@@ -205,6 +226,7 @@ sleep 1
 log "📡 Setting Features (no ARC)..."
 cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
 cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
+keep_sam_on
 
 # 3. Verification
 log "📊 Verification..."
@@ -230,6 +252,7 @@ log "🔄 Starting CEC audio status watcher..."
 AUDIO_PID=$!
 
 # 5. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
+PENDING_SAM_REQUEST=0
 log "📡 Starting cec-follower monitoring (with verbose, wall-clock timestamps, show-msgs, show-state) - Ctrl+C to stop"
 log "🎛️ Select 'Home Cinema' in VIERA Link and test volume/power!"
 
@@ -247,7 +270,7 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     if echo "$line" | grep -iq "ui-cmd: volume-up"; then
         log "🔊 VOLUME UP Panasonic!"
         amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
-        adjust_cec_osd_volume 1
+        # OSD : cec-follower reporte déjà ~50. Ne pas renvoyer volume=2/3, ça fait lâcher le SAM.
         notify_homebridge "volume" "up"
     fi
         
@@ -255,7 +278,6 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     if echo "$line" | grep -iq "ui-cmd: volume-down"; then
         log "🔉 VOLUME DOWN Panasonic!"
         amixer set Master 2%- >/dev/null 2>&1
-        adjust_cec_osd_volume -1
         notify_homebridge "volume" "down"
     fi
         
@@ -276,12 +298,25 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
         notify_homebridge "power" "standby"
     fi
     
-    if echo "$line" | grep -Eiq "give-audio-status|give audio status|opcode: 0x71"; then
-        reply_give_audio_status
-    fi
-    
     if echo "$line" | grep -Eiq "REQUEST_ARC_INITIATION|request-arc-initiation"; then
         refuse_arc
+    fi
+
+    if echo "$line" | grep -Eiq "SYSTEM_AUDIO_MODE_REQUEST|system audio mode request|opcode: 0x70"; then
+        PENDING_SAM_REQUEST=1
+    fi
+    if [ "${PENDING_SAM_REQUEST:-0}" = "1" ]; then
+        if echo "$line" | grep -Eiq "f\.f\.f\.f|phys-addr: 0xffff|0xf\.f\.f\.f"; then
+            log "📺 TV a demandé SAM OFF (f.f.f.f) — restauration HDMI system"
+            keep_sam_on
+            PENDING_SAM_REQUEST=0
+        elif echo "$line" | grep -Eiq "phys-addr"; then
+            PENDING_SAM_REQUEST=0
+        fi
+    fi
+    if echo "$line" | grep -Eiq "sys-aud-status: off|system audio mode.*off"; then
+        log "📺 SAM off détecté — restauration"
+        keep_sam_on
     fi
     
     # Log current volume after volume/mute change
