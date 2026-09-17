@@ -493,26 +493,26 @@ export class IRAmplifierAccessory {
             case 'power':
               if (command.value === 'on') {
                 this.log.info('CEC: Power ON from external service');
-                this.handleCECPowerOn();
+                void this.handleCECPowerOn();
               } else if (command.value === 'off' || command.value === 'standby') {
                 this.log.info('CEC: Power OFF/STANDBY from external service');
-                this.handleCECPowerOff();
+                void this.handleCECPowerOff();
               }
               break;
               
             case 'volume':
               if (command.value === 'up') {
                 this.log.info('CEC: Volume UP from external service');
-                this.handleCECVolumeUp();
+                this.enqueueIr(() => this.handleCECVolumeUp());
               } else if (command.value === 'down') {
                 this.log.info('CEC: Volume DOWN from external service');
-                this.handleCECVolumeDown();
+                this.enqueueIr(() => this.handleCECVolumeDown());
               }
               break;
               
             case 'mute':
               this.log.info('CEC: Mute toggle from external service');
-              this.handleCECMuteToggle();
+              this.enqueueIr(() => this.handleCECMuteToggle());
               break;
           }
           
@@ -644,6 +644,14 @@ export class IRAmplifierAccessory {
     }
   }
 
+  private irQueue: Promise<void> = Promise.resolve();
+
+  private enqueueIr(task: () => Promise<void>): void {
+    this.irQueue = this.irQueue.then(task).catch((error) => {
+      this.log.error('IR queue error:', error);
+    });
+  }
+
   private async handleCECVolumeUp() {
     this.log.info('CEC: Volume UP requested - sending IR volume up command');
     
@@ -741,7 +749,7 @@ export class IRAmplifierAccessory {
         
         const startupVolume = getStartupVolume(this.pluginConfig);
         this.state.setEstimatedVolume(startupVolume, 'startup');
-        this.publishVolume(true);
+        this.publishVolume(false);
         this.log.info(`HomeKit volume updated to startup volume: ${startupVolume}%`);
         this.ocrController.scheduleAfterVolumeBurst();
       } else {

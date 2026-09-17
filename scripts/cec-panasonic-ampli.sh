@@ -42,6 +42,8 @@ refuse_arc() {
     cec-ctl -d /dev/cec0 --to 0 --report-arc-terminated >/dev/null 2>&1 || \
         cec-ctl -d /dev/cec0 --to 0 --feature-abort reason=refused >/dev/null 2>&1 || true
 }
+
+report_cec_audio_status() {
     local vol="$1"
     local mute="$2"
     log "📶 CEC Report Audio Status volume=${vol} mute=${mute}"
@@ -51,24 +53,47 @@ refuse_arc() {
     cec-ctl -d /dev/cec0 --to 4 --report-audio-status "aud-mute=${mute},aud-vol-lfe=${vol}" >/dev/null 2>&1 || true
 }
 
+# OSD TV : compteur 0–100 indépendant du volume HomeKit (startupVolume=7, OCR, etc.)
+adjust_cec_osd_volume() {
+    local delta="$1"
+    local vol=50
+    local mute=0
+    [ -f /var/lib/homebridge/cec-last-volume ] && vol=$(cat /var/lib/homebridge/cec-last-volume)
+    [ -f /var/lib/homebridge/cec-last-mute ] && mute=$(cat /var/lib/homebridge/cec-last-mute)
+    [[ "$vol" =~ ^[0-9]+$ ]] || vol=50
+    vol=$((vol + delta))
+    [ "$vol" -gt 100 ] && vol=100
+    [ "$vol" -lt 0 ] && vol=0
+    mute=0
+    echo "$vol" > /var/lib/homebridge/cec-last-volume
+    echo "$mute" > /var/lib/homebridge/cec-last-mute
+    report_cec_audio_status "$vol" "$mute"
+}
+
 sync_cec_audio_from_homebridge() {
     local audio_file="/var/lib/homebridge/homebridge-to-cec-audio.json"
     if [ ! -f "$audio_file" ]; then
         return
     fi
 
-    local vol
     local mute
-    vol=$(jq -r '.volume' "$audio_file" 2>/dev/null)
     mute=$(jq -r '.mute' "$audio_file" 2>/dev/null)
     rm -f "$audio_file"
 
-    if [[ "$vol" =~ ^[0-9]+$ ]]; then
-        [ "$mute" != "1" ] && mute=0
-        echo "$vol" > /var/lib/homebridge/cec-last-volume
-        echo "$mute" > /var/lib/homebridge/cec-last-mute
-        report_cec_audio_status "$vol" "$mute"
+    # Mute uniquement. Le volume HomeKit (init à 7 crans) ne doit pas remplacer l'OSD relatif.
+    [ "$mute" = "1" ] || mute=0
+    local prev_mute=0
+    [ -f /var/lib/homebridge/cec-last-mute ] && prev_mute=$(cat /var/lib/homebridge/cec-last-mute)
+    [ "$prev_mute" = "1" ] || prev_mute=0
+    if [ "$mute" = "$prev_mute" ]; then
+        return
     fi
+
+    local vol=50
+    [ -f /var/lib/homebridge/cec-last-volume ] && vol=$(cat /var/lib/homebridge/cec-last-volume)
+    [[ "$vol" =~ ^[0-9]+$ ]] || vol=50
+    echo "$mute" > /var/lib/homebridge/cec-last-mute
+    report_cec_audio_status "$vol" "$mute"
 }
 
 LAST_GIVE_AUDIO_REPLY=0
@@ -222,6 +247,7 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     if echo "$line" | grep -iq "ui-cmd: volume-up"; then
         log "🔊 VOLUME UP Panasonic!"
         amixer set Master 2%+ >/dev/null 2>&1  # Optional: local audio adjust if Raspberry Pi audio is in use
+        adjust_cec_osd_volume 1
         notify_homebridge "volume" "up"
     fi
         
@@ -229,6 +255,7 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     if echo "$line" | grep -iq "ui-cmd: volume-down"; then
         log "🔉 VOLUME DOWN Panasonic!"
         amixer set Master 2%- >/dev/null 2>&1
+        adjust_cec_osd_volume -1
         notify_homebridge "volume" "down"
     fi
         
