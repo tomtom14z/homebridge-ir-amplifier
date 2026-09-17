@@ -37,32 +37,31 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
-SAM_LOCK=/var/lib/homebridge/cec-last-sam-on
+ARC_LOCK=/var/lib/homebridge/cec-last-arc-ack
 
-keep_sam_on() {
+ack_arc() {
     local now
     now=$(date +%s)
     local last=0
-    [ -f "$SAM_LOCK" ] && last=$(cat "$SAM_LOCK" 2>/dev/null)
+    [ -f "$ARC_LOCK" ] && last=$(cat "$ARC_LOCK" 2>/dev/null)
     [[ "$last" =~ ^[0-9]+$ ]] || last=0
-    if [ $((now - last)) -lt 2 ]; then
+    if [ $((now - last)) -lt 4 ]; then
         return
     fi
-    echo "$now" > "$SAM_LOCK"
+    echo "$now" > "$ARC_LOCK"
 
-    log "🔊 System Audio Mode ON (volume CEC, audio reste sur l'optique)"
-    # Broadcast 0x72 Set System Audio Mode [On] — sans ARC
+    # Handshake CEC uniquement : si on abort, la TV retente toutes les 5 s,
+    # coupe l'optique une demi-seconde et affiche l'OSD volume TV.
+    log "🔗 ARC handshake ACK (CEC) — l'audio matériel reste l'optique si la TV le permet"
+    cec-ctl -d /dev/cec0 --to 0 --no-reply --report-arc-initiated >/dev/null 2>&1 || \
+        cec-ctl -d /dev/cec0 --to 0 --report-arc-initiated >/dev/null 2>&1 || true
+}
+
+keep_sam_on() {
+    log "🔊 System Audio Mode ON"
     cec-ctl -d /dev/cec0 --to 0 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
         cec-ctl -d /dev/cec0 -t 15 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
         cec-ctl -d /dev/cec0 --to 0 --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || true
-}
-
-refuse_arc() {
-    log "⛔ ARC ignoré (optique → home cinéma) — on garde le System Audio Mode"
-    # Ne PAS envoyer Report ARC Terminated : la TV croit que l'ampli HDMI a disparu et reprend ses HP.
-    cec-ctl -d /dev/cec0 --to 0 --no-reply --feature-abort reason=unrecognized >/dev/null 2>&1 || \
-        cec-ctl -d /dev/cec0 --to 0 --feature-abort reason=refused >/dev/null 2>&1 || true
-    keep_sam_on
 }
 
 report_cec_audio_status() {
@@ -221,11 +220,11 @@ sleep 1
 cec-ctl -d /dev/cec0 --cec-version-1.4 >/dev/null 2>&1
 sleep 1
 
-# 2. Set Features — Audio System for volume keys, PAS d'ARC
-# (ARC ferait couper les HP TV : le Pi n'est pas un vrai ampli HDMI)
-log "📡 Setting Features (no ARC)..."
+# 2. Audio System + ARC TX déclaré. Sans ACK ARC, la TV retente toutes les 5 s (microcoupures + OSD HP TV).
+log "📡 Setting Features (SAM + ARC handshake)..."
 cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
 cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
+cec-ctl -d /dev/cec0 --audio --feat-sink-has-arc-tx >/dev/null 2>&1
 keep_sam_on
 
 # 3. Verification
@@ -252,7 +251,6 @@ log "🔄 Starting CEC audio status watcher..."
 AUDIO_PID=$!
 
 # 5. Start cec-follower with options from your system's usage (-v -w -m -s) and parse output in real-time
-PENDING_SAM_REQUEST=0
 log "📡 Starting cec-follower monitoring (with verbose, wall-clock timestamps, show-msgs, show-state) - Ctrl+C to stop"
 log "🎛️ Select 'Home Cinema' in VIERA Link and test volume/power!"
 
@@ -299,24 +297,7 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     fi
     
     if echo "$line" | grep -Eiq "REQUEST_ARC_INITIATION|request-arc-initiation"; then
-        refuse_arc
-    fi
-
-    if echo "$line" | grep -Eiq "SYSTEM_AUDIO_MODE_REQUEST|system audio mode request|opcode: 0x70"; then
-        PENDING_SAM_REQUEST=1
-    fi
-    if [ "${PENDING_SAM_REQUEST:-0}" = "1" ]; then
-        if echo "$line" | grep -Eiq "f\.f\.f\.f|phys-addr: 0xffff|0xf\.f\.f\.f"; then
-            log "📺 TV a demandé SAM OFF (f.f.f.f) — restauration HDMI system"
-            keep_sam_on
-            PENDING_SAM_REQUEST=0
-        elif echo "$line" | grep -Eiq "phys-addr"; then
-            PENDING_SAM_REQUEST=0
-        fi
-    fi
-    if echo "$line" | grep -Eiq "sys-aud-status: off|system audio mode.*off"; then
-        log "📺 SAM off détecté — restauration"
-        keep_sam_on
+        ack_arc
     fi
     
     # Log current volume after volume/mute change
