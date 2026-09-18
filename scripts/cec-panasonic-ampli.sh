@@ -130,24 +130,7 @@ sync_cec_state_from_homebridge() {
             # Vérifier s'il y a une commande HDMI1
             local action=$(jq -r '.action' "$state_file" 2>/dev/null)
             if [ "$action" = "hdmi1" ]; then
-                log "📺 Homebridge requested HDMI1 switch (timestamp: $timestamp)"
-                
-                # Envoyer la commande HDMI1 via CEC
-                log "📺 Sending HDMI1 command to TV..."
-                # Utiliser --active-source avec l'adresse physique de l'Apple TV (HDMI1 = 1.0.0.0 = 0x1000)
-                # Cette commande est un broadcast, pas besoin de --to
-                cec-ctl -d /dev/cec0 --active-source phys-addr=0x1000 >/dev/null 2>&1
-                if [ $? -eq 0 ]; then
-                    log "✅ HDMI1 command sent successfully (active-source phys-addr=0x1000)"
-                else
-                    log "❌ HDMI1 command failed"
-                    log "🔍 Debug: Testing cec-ctl version and permissions..."
-                    cec-ctl --version 2>&1 | head -1
-                    log "🔍 Debug: Testing device access..."
-                    ls -la /dev/cec0 2>&1
-                fi
-                
-                # Supprimer le fichier après traitement
+                log "📺 Homebridge requested HDMI1 — ignoré (cec-ctl casserait le follower)"
                 rm -f "$state_file"
             fi
         fi
@@ -273,15 +256,9 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     fi
     
     # 0x70 = System Audio Mode Request, PAS un power on.
-    # phys-addr f.f.f.f = SAM off (la TV reprend ses HP) — ne pas allumer l'ampli IR.
+    # REPORT_POWER_STATUS de l'Apple TV (Playback 1) n'est PAS un allumage ampli.
     
-    # Power On (via REPORT_POWER_STATUS: pwr-state: on)
-    if echo "$line" | grep -iq "pwr-state: on.*0x00"; then
-        log "🔋 POWER ON Panasonic! (via power status report)"
-        notify_homebridge "power" "on"
-    fi
-    
-    # Standby (standby or 0x36)
+    # Standby broadcast TV (0x36)
     if echo "$line" | grep -iq "STANDBY.*0x36"; then
         log "🛑 STANDBY Panasonic!"
         notify_homebridge "power" "standby"

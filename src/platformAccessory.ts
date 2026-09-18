@@ -554,13 +554,7 @@ export class IRAmplifierAccessory {
       
       // Même si l'amplificateur est déjà allumé, envoyer la commande HDMI1 si activée
       if (isAutoHDMI1Enabled(this.pluginConfig)) {
-        this.log.info('CEC: Amplifier already ON - sending HDMI1 command via CEC...');
-        const hdmiSuccess = await this.sendCECHdmi1Command();
-        if (hdmiSuccess) {
-          this.log.info('CEC: HDMI1 CEC command sent successfully');
-        } else {
-          this.log.warn('CEC: HDMI1 CEC command failed');
-        }
+        this.log.info('CEC: Amplifier already ON — skip HDMI1 CEC (Apple TV sends Active Source itself)');
       }
       return;
     }
