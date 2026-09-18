@@ -434,8 +434,10 @@ export class IRAmplifierAccessory {
       // Délai avant la synchronisation initiale CEC
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Synchroniser l'état CEC avec l'état initial
-      this.syncCECState(this.state.isOn());
+      // Ne pas pousser OFF au CEC au boot (TP-Link souvent pas prêt → faux OFF).
+      if (this.state.isOn()) {
+        this.syncCECState(true);
+      }
       this.log.info('CEC: Initial state synchronized with CEC bus');
       
       await this.getVolume();

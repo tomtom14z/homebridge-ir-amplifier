@@ -37,41 +37,9 @@ notify_homebridge() {
     log "📱 Notified Homebridge: $action=$value (via /var/lib/homebridge/cec-to-homebridge.json)"
 }
 
-ARC_LOCK=/var/lib/homebridge/cec-last-arc-ack
-
-ack_arc() {
-    local now
-    now=$(date +%s)
-    local last=0
-    [ -f "$ARC_LOCK" ] && last=$(cat "$ARC_LOCK" 2>/dev/null)
-    [[ "$last" =~ ^[0-9]+$ ]] || last=0
-    if [ $((now - last)) -lt 4 ]; then
-        return
-    fi
-    echo "$now" > "$ARC_LOCK"
-
-    # Handshake CEC uniquement : si on abort, la TV retente toutes les 5 s,
-    # coupe l'optique une demi-seconde et affiche l'OSD volume TV.
-    log "🔗 ARC handshake ACK (CEC) — l'audio matériel reste l'optique si la TV le permet"
-    cec-ctl -d /dev/cec0 --to 0 --no-reply --report-arc-initiated >/dev/null 2>&1 || \
-        cec-ctl -d /dev/cec0 --to 0 --report-arc-initiated >/dev/null 2>&1 || true
-}
-
-keep_sam_on() {
-    log "🔊 System Audio Mode ON"
-    cec-ctl -d /dev/cec0 --to 0 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
-        cec-ctl -d /dev/cec0 -t 15 --no-reply --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || \
-        cec-ctl -d /dev/cec0 --to 0 --set-system-audio-mode sys-aud-status=on >/dev/null 2>&1 || true
-}
-
 report_cec_audio_status() {
-    local vol="$1"
-    local mute="$2"
-    log "📶 CEC Report Audio Status volume=${vol} mute=${mute}"
-    # TV (0) puis Apple TV / playback (4)
-    cec-ctl -d /dev/cec0 --to 0 --report-audio-status "aud-mute=${mute},aud-vol-lfe=${vol}" >/dev/null 2>&1 || \
-        cec-ctl -d /dev/cec0 --to 0 --report-audio-status aud-mute="${mute}",aud-vol-lfe="${vol}" >/dev/null 2>&1
-    cec-ctl -d /dev/cec0 --to 4 --report-audio-status "aud-mute=${mute},aud-vol-lfe=${vol}" >/dev/null 2>&1 || true
+    # Ne pas appeler cec-ctl ici : cec-follower possède déjà /dev/cec0.
+    log "📶 CEC audio status (follower) volume=$1 mute=$2"
 }
 
 # OSD TV : compteur 0–100 indépendant du volume HomeKit (startupVolume=7, OCR, etc.)
@@ -151,8 +119,7 @@ sync_cec_state_from_homebridge() {
             
             # Mettre à jour l'état CEC en conséquence
             if [ "$power_state" = "on" ]; then
-                log "🔋 Syncing CEC state to ON"
-                cec-ctl -d /dev/cec0 --audio --power-on >/dev/null 2>&1
+                log "🔋 Homebridge power ON — pas de cec-ctl (follower garde l'Audio System)"
             else
                 log "🛑 Amp électrique OFF — on garde l'Audio System CEC (pas de standby, sinon la TV coupe le son)"
             fi
@@ -220,12 +187,11 @@ sleep 1
 cec-ctl -d /dev/cec0 --cec-version-1.4 >/dev/null 2>&1
 sleep 1
 
-# 2. Audio System + ARC TX déclaré. Sans ACK ARC, la TV retente toutes les 5 s (microcoupures + OSD HP TV).
-log "📡 Setting Features (SAM + ARC handshake)..."
+# 2. Audio System pour Vol±. PAS d'ARC : le Pi est en HDMI 3 (3.0.0.0), pas le port ARC.
+# cec-ctl pendant cec-follower fait tomber l'adresse logique → plus de Vol± / plus d'IR.
+log "📡 Setting Features (SAM, no ARC)..."
 cec-ctl -d /dev/cec0 --audio --feat-set-audio-rate >/dev/null 2>&1
 cec-ctl -d /dev/cec0 --audio --feat-set-system-audio-mode >/dev/null 2>&1
-cec-ctl -d /dev/cec0 --audio --feat-sink-has-arc-tx >/dev/null 2>&1
-keep_sam_on
 
 # 3. Verification
 log "📊 Verification..."
@@ -297,7 +263,7 @@ cec-follower -d /dev/cec0 -v -w -m -s | while IFS= read -r line; do
     fi
     
     if echo "$line" | grep -Eiq "REQUEST_ARC_INITIATION|request-arc-initiation"; then
-        ack_arc
+        log "⛔ ARC ignoré (Pi HDMI 3, audio = optique). cec-follower abort, pas de cec-ctl."
     fi
     
     # Log current volume after volume/mute change
